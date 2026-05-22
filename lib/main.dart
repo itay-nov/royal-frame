@@ -37,9 +37,17 @@ const _kNumberSilverBorder = Color(0xFFE0E0E0);
 // Phase.clear reduction selection / pair highlights (distinct from royal / gold)
 const _kSelectionNeonMagenta = Color(0xFFFF00FF);
 
-// Playing card back (deckofcardsapi) via CORS proxy for web
+// Classic bicycle-style card back (deckofcardsapi) via CORS proxy for web
 const _kCardBackUrl =
+    'https://corsproxy.io/?https://deckofcardsapi.com/static/img/back.png';
+const _kCardBackUrlAlt =
     'https://corsproxy.io/?https://www.deckofcardsapi.com/static/img/back.png';
+
+// 3D deck stack: card 72×100 + max 4-layer offset (left +3, bottom +6)
+const _kDeckStackW = 78.0;
+const _kDeckStackH = 108.0;
+const _kDeckLayerOffsetX = 1.0;
+const _kDeckLayerOffsetY = 2.0;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LOCALIZATION
@@ -1078,42 +1086,66 @@ class _BoardScreenState extends State<BoardScreen> {
 
   Widget _cardBackFallback() {
     return Container(
-      color: const Color(0xFF3A0A12),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF1565C0), Color(0xFF0D47A1), Color(0xFF1565C0)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
       child: Center(
         child: Opacity(
-          opacity: 0.35,
-          child: Icon(Icons.style, size: 40, color: _kGold),
+          opacity: 0.4,
+          child: Icon(Icons.grid_4x4_rounded, size: 36, color: Colors.white70),
         ),
       ),
     );
   }
 
-  Widget _cardBackLayer() {
+  Widget _cardBackImage() {
+    return Image.network(
+      _kCardBackUrl,
+      width: _kCardW,
+      height: _kCardH,
+      fit: BoxFit.cover,
+      filterQuality: FilterQuality.medium,
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return _cardBackFallback();
+      },
+      errorBuilder: (_, __, ___) => Image.network(
+        _kCardBackUrlAlt,
+        width: _kCardW,
+        height: _kCardH,
+        fit: BoxFit.cover,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, __, ___) => _cardBackFallback(),
+      ),
+    );
+  }
+
+  Widget _cardBackLayer({int depth = 0}) {
     return Container(
       width: _kCardW,
       height: _kCardH,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _kGold, width: 1.8),
+        border: Border.all(
+          color: depth == 0 ? _kGold.withOpacity(0.9) : _kGoldDark.withOpacity(0.75),
+          width: depth == 0 ? 1.8 : 1.2,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.35),
-            blurRadius: 3,
-            offset: const Offset(1, 2),
+            color: Colors.black.withOpacity(0.30 + depth * 0.06),
+            blurRadius: 2.5 + depth * 1.5,
+            spreadRadius: depth * 0.3,
+            offset: Offset(0.8 + depth * 0.6, 1.5 + depth * 1.2),
           ),
         ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: Image.network(
-          _kCardBackUrl,
-          width: _kCardW,
-          height: _kCardH,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _cardBackFallback(),
-          loadingBuilder: (context, child, progress) =>
-              progress == null ? child : _cardBackFallback(),
-        ),
+        child: _cardBackImage(),
       ),
     );
   }
@@ -1132,33 +1164,30 @@ class _BoardScreenState extends State<BoardScreen> {
     );
   }
 
+  /// Fixed-size 3D deck stack — offsets stay inside the box so labels don't shift.
   Widget _stackedDeckWidget() {
     final remaining = game.cardsRemainingDisplay;
-    if (remaining <= 0) return _emptyDeckSlot();
-
-    final layers = _deckStackLayers(remaining);
-    final padTop = (layers - 1) * 2.0;
-    final padLeft = 0.0;
-    final stackW = _kCardW + (layers - 1) * 1.0;
-    final stackH = _kCardH + padTop;
 
     return SizedBox(
-      width: stackW,
-      height: stackH,
-      child: Padding(
-        padding: EdgeInsets.only(top: padTop, left: padLeft),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            for (int i = 0; i < layers; i++)
-              Positioned(
-                top: i * -2.0,
-                left: i * 1.0,
-                child: _cardBackLayer(),
-              ),
-          ],
-        ),
-      ),
+      width: _kDeckStackW,
+      height: _kDeckStackH,
+      child: remaining <= 0
+          ? Align(
+              alignment: Alignment.bottomLeft,
+              child: _emptyDeckSlot(),
+            )
+          : Stack(
+              clipBehavior: Clip.hardEdge,
+              alignment: Alignment.bottomLeft,
+              children: [
+                for (int i = 0; i < _deckStackLayers(remaining); i++)
+                  Positioned(
+                    bottom: i * _kDeckLayerOffsetY,
+                    left: i * _kDeckLayerOffsetX,
+                    child: _cardBackLayer(depth: i),
+                  ),
+              ],
+            ),
     );
   }
 
@@ -1182,27 +1211,38 @@ class _BoardScreenState extends State<BoardScreen> {
     final bool boardFullClear =
         game.phase == Phase.clear && curr == null;
 
-    final deckColumn = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _stackedDeckWidget(),
-        const SizedBox(height: 4),
-        Text(
-          '${game.cardsRemainingDisplay}',
-          style: const TextStyle(
-            color: _kGoldLight,
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
+    final deckColumn = SizedBox(
+      width: _kDeckStackW,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _stackedDeckWidget(),
+          const SizedBox(height: 4),
+          Text(
+            '${game.cardsRemainingDisplay}',
+            style: const TextStyle(
+              color: _kGoldLight,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-        const SizedBox(height: 2),
-        Text(_l.labelDeck, style: _labelStyle()),
-        if (peek != null) ...[
-          const SizedBox(height: 3),
-          Text(_l.peekNext('${peek.label}${suitSymbol(peek.suit)}'),
-              style: const TextStyle(fontSize: 10, color: _kGoldLight, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          Text(_l.labelDeck, style: _labelStyle()),
+          if (peek != null) ...[
+            const SizedBox(height: 3),
+            Text(
+              _l.peekNext('${peek.label}${suitSymbol(peek.suit)}'),
+              style: const TextStyle(
+                fontSize: 10,
+                color: _kGoldLight,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ],
-      ],
+      ),
     );
 
     final Widget exposedFace = boardFullClear
@@ -1227,11 +1267,18 @@ class _BoardScreenState extends State<BoardScreen> {
       children: [
         deckColumn,
         const SizedBox(width: 16),
-        Column(mainAxisSize: MainAxisSize.min, children: [
-          exposedFace,
-          const SizedBox(height: 4),
-          Text(faceLabel, style: _labelStyle(dimmed: boardFullClear)),
-        ]),
+        SizedBox(
+          width: _kDeckStackW,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              exposedFace,
+              const SizedBox(height: 4),
+              Text(faceLabel, style: _labelStyle(dimmed: boardFullClear)),
+            ],
+          ),
+        ),
       ],
     );
   }
