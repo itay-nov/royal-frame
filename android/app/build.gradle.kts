@@ -1,5 +1,8 @@
 plugins {
     id("com.android.application")
+    // START: FlutterFire Configuration
+    id("com.google.gms.google-services")
+    // END: FlutterFire Configuration
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
@@ -20,13 +23,12 @@ android {
     }
 
     defaultConfig {
-    applicationId "com.itay.royalframe"        // מזהה ייחודי
-    minSdkVersion 21
-    targetSdkVersion 35                       // חובה לעמוד בדרישת Google Play 2025
-    compileSdkVersion 35
-    versionCode flutterVersionCode.toInteger()
-    versionName flutterVersionName
-}
+        applicationId = "com.itay.royalframe"
+        minSdk = 21
+        targetSdk = 35
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
 
 
     buildTypes {

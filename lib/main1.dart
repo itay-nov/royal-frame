@@ -8,28 +8,28 @@ import 'package:audioplayers/audioplayers.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // THEME CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
-const _kBurgundy         = Color(0xFF4A0E1A);
-const _kBurgundyLight    = Color(0xFF6B1A2A);
-const _kGold             = Color(0xFFD4AF37);
-const _kGoldLight        = Color(0xFFF0D060);
-const _kGoldDark         = Color(0xFF9A7B1A);
-const _kCardWhite        = Color(0xFFFFFDF5);
-const _kCardRed          = Color(0xFFB71C1C);
-const _kCardBlack        = Color(0xFF1A1A1A);
-const _kTableGreen       = Color(0xFF1A3A2A);
-const _kTableGreenMid    = Color(0xFF254D38);
-const _kSlotFrame        = Color(0xFF2E5C44);
-const _kSlotFrameBorder  = Color(0xFF5AAE80);   // brighter than before
-const _kSlotDumpBorder   = Color(0xFF2E4A3A);
-const _kBlockedBg        = Color(0xFF3D1A1A);
-const _kBlockedBorder    = Color(0xFFB06060);
-const _kDragTarget       = Color(0xFF3D3010);
-const _kDragTargetBorder = Color(0xFFE8C84A);
+const kBurgundy         = Color(0xFF4A0E1A);
+const kBurgundyLight    = Color(0xFF6B1A2A);
+const kGold             = Color(0xFFD4AF37);
+const kGoldLight        = Color(0xFFF0D060);
+const kGoldDark         = Color(0xFF9A7B1A);
+const kCardWhite        = Color(0xFFFFFDF5);
+const kCardRed          = Color(0xFFB71C1C);
+const kCardBlack        = Color(0xFF1A1A1A);
+const kTableGreen       = Color(0xFF1A3A2A);
+const kTableGreenMid    = Color(0xFF254D38);
+const kSlotFrame        = Color(0xFF2E5C44);
+const kSlotFrameBorder  = Color(0xFF5AAE80);   // brighter than before
+const kSlotDumpBorder   = Color(0xFF2E4A3A);
+const kBlockedBg        = Color(0xFF3D1A1A);
+const kBlockedBorder    = Color(0xFFB06060);
+const kDragTarget       = Color(0xFF3D3010);
+const kDragTargetBorder = Color(0xFFE8C84A);
 
 // Golden Royal colours
-const _kRoyalGoldBg      = Color(0xFF3A2800);   // deep gold background
-const _kRoyalGoldBorder  = Color(0xFFFFD700);   // bright gold border
-const _kRoyalGlowColor   = Color(0xFFFFD700);   // glow tint
+const kRoyalGoldBg      = Color(0xFF3A2800);   // deep gold background
+const kRoyalGoldBorder  = Color(0xFFFFD700);   // bright gold border
+const kRoyalGlowColor   = Color(0xFFFFD700);   // glow tint
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LOCALIZATION
@@ -139,23 +139,23 @@ class RoyalFrameApp extends StatelessWidget {
       theme: ThemeData(
         colorSchemeSeed: const Color(0xFFD4AF37),
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: _kBurgundy,
+        scaffoldBackgroundColor: kBurgundy,
         appBarTheme: const AppBarTheme(
-          backgroundColor: _kBurgundyLight,
-          foregroundColor: _kGold,
+          backgroundColor: kBurgundyLight,
+          foregroundColor: kGold,
           elevation: 0,
           titleSpacing: 16,
         ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
-            backgroundColor: _kGold,
-            foregroundColor: _kBurgundy,
+            backgroundColor: kGold,
+            foregroundColor: kBurgundy,
             textStyle: const TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.8),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
         ),
         textButtonTheme: TextButtonThemeData(
-          style: TextButton.styleFrom(foregroundColor: _kGoldLight),
+          style: TextButton.styleFrom(foregroundColor: kGoldLight),
         ),
       ),
       home: const BoardScreen(),
@@ -925,17 +925,17 @@ class _BoardScreenState extends State<BoardScreen> {
     final content = Directionality(
       textDirection: _lang == AppLang.he ? TextDirection.rtl : TextDirection.ltr,
       child: Container(
-        color: _kBurgundyLight,
+        color: kBurgundyLight,
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(_l.rulesTitle,
-                style: const TextStyle(color: _kGold, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                style: const TextStyle(color: kGold, fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1)),
             const SizedBox(height: 16),
             Text(_l.rulesBody,
-                style: const TextStyle(color: _kGoldLight, fontSize: 14, height: 1.7)),
+                style: const TextStyle(color: kGoldLight, fontSize: 14, height: 1.7)),
           ],
         ),
       ),
@@ -944,7 +944,7 @@ class _BoardScreenState extends State<BoardScreen> {
       showDialog(context: context, builder: (_) => Dialog(child: SizedBox(width: 460, child: content)));
     } else {
       showModalBottomSheet(
-        context: context, showDragHandle: true, backgroundColor: _kBurgundyLight,
+        context: context, showDragHandle: true, backgroundColor: kBurgundyLight,
         builder: (_) => content,
       );
     }
@@ -954,8 +954,8 @@ class _BoardScreenState extends State<BoardScreen> {
   Widget _overflowMenu() {
     return PopupMenuButton<String>(
       tooltip: _l.tooltipMore,
-      icon: const Icon(Icons.more_vert, color: _kGold),
-      color: _kBurgundyLight,
+      icon: const Icon(Icons.more_vert, color: kGold),
+      color: kBurgundyLight,
       onSelected: (v) {
         switch (v) {
           case 'lang':  setState(() => _lang = _lang == AppLang.he ? AppLang.en : AppLang.he);
@@ -965,14 +965,14 @@ class _BoardScreenState extends State<BoardScreen> {
       itemBuilder: (_) => [
         PopupMenuItem(value: 'lang',
           child: ListTile(
-            leading: const Icon(Icons.language, color: _kGold),
-            title: Text(_l.langToggleLabel, style: const TextStyle(color: _kGoldLight)),
+            leading: const Icon(Icons.language, color: kGold),
+            title: Text(_l.langToggleLabel, style: const TextStyle(color: kGoldLight)),
           )),
         PopupMenuItem(value: 'debug',
           child: ListTile(
-            leading: Icon(_showDebugTools ? Icons.settings : Icons.settings_outlined, color: _kGold),
+            leading: Icon(_showDebugTools ? Icons.settings : Icons.settings_outlined, color: kGold),
             title: Text(_showDebugTools ? _l.menuDebugHide : _l.menuDebugShow,
-                style: const TextStyle(color: _kGoldLight)),
+                style: const TextStyle(color: kGoldLight)),
           )),
       ],
     );
@@ -982,7 +982,7 @@ class _BoardScreenState extends State<BoardScreen> {
   // CARD WIDGETS
   // ─────────────────────────────────────────────────────────────────────────
   Widget _playingCard(CardModel c, {bool large = false, bool dimmed = false}) {
-    final faceColor = isRed(c.suit) ? _kCardRed : _kCardBlack;
+    final faceColor = isRed(c.suit) ? kCardRed : kCardBlack;
     final w = large ? 90.0 : 72.0;
     final h = large ? 126.0 : 100.0;
 
@@ -998,8 +998,8 @@ class _BoardScreenState extends State<BoardScreen> {
             borderRadius: BorderRadius.circular(10),
             child: Container(
               decoration: BoxDecoration(
-                color: _kCardWhite, borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _kGoldDark, width: 1.6),
+                color: kCardWhite, borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: kGoldDark, width: 1.6),
               ),
               padding: const EdgeInsets.all(6),
               child: Stack(children: [
@@ -1028,7 +1028,7 @@ class _BoardScreenState extends State<BoardScreen> {
       width: 72, height: 100,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _kGold, width: 1.8),
+        border: Border.all(color: kGold, width: 1.8),
         gradient: const LinearGradient(
           colors: [Color(0xFF6B1A2A), Color(0xFF3A0A12)],
           begin: Alignment.topLeft, end: Alignment.bottomRight,
@@ -1036,10 +1036,10 @@ class _BoardScreenState extends State<BoardScreen> {
       ),
       child: Stack(children: [
         Center(child: Opacity(opacity: 0.25,
-            child: Icon(Icons.diamond_outlined, size: 48, color: _kGold))),
+            child: Icon(Icons.diamond_outlined, size: 48, color: kGold))),
         if (label != null && label.isNotEmpty)
           Center(child: Text(label, textAlign: TextAlign.center,
-            style: const TextStyle(color: _kGold, fontWeight: FontWeight.w700, fontSize: 12, height: 1.3))),
+            style: const TextStyle(color: kGold, fontWeight: FontWeight.w700, fontSize: 12, height: 1.3))),
       ]),
     );
   }
@@ -1048,11 +1048,11 @@ class _BoardScreenState extends State<BoardScreen> {
     return Container(
       width: 72, height: 100,
       decoration: BoxDecoration(
-        color: _kBurgundyLight, borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _kGoldDark, width: 1.2),
+        color: kBurgundyLight, borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: kGoldDark, width: 1.2),
       ),
       child: Center(child: Text(label,
-          style: const TextStyle(color: _kGold, fontWeight: FontWeight.bold))),
+          style: const TextStyle(color: kGold, fontWeight: FontWeight.bold))),
     );
   }
 
@@ -1079,7 +1079,7 @@ class _BoardScreenState extends State<BoardScreen> {
         if (peek != null) ...[
           const SizedBox(height: 3),
           Text(_l.peekNext('${peek.label}${suitSymbol(peek.suit)}'),
-              style: const TextStyle(fontSize: 10, color: _kGoldLight, fontWeight: FontWeight.w600)),
+              style: const TextStyle(fontSize: 10, color: kGoldLight, fontWeight: FontWeight.w600)),
         ],
       ],
     );
@@ -1122,7 +1122,7 @@ class _BoardScreenState extends State<BoardScreen> {
 
   TextStyle _labelStyle({bool dimmed = false}) => TextStyle(
     fontSize: 11, fontWeight: FontWeight.w600,
-    color: dimmed ? Colors.white38 : _kGoldLight,
+    color: dimmed ? Colors.white38 : kGoldLight,
     fontStyle: dimmed ? FontStyle.italic : FontStyle.normal,
     letterSpacing: 0.4,
   );
@@ -1150,7 +1150,7 @@ class _BoardScreenState extends State<BoardScreen> {
     return Container(
       width: gridW, height: gridH,
       decoration: BoxDecoration(
-        color: _kTableGreen, borderRadius: BorderRadius.circular(12),
+        color: kTableGreen, borderRadius: BorderRadius.circular(12),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.45), blurRadius: 16, offset: const Offset(0, 4))],
       ),
       padding: const EdgeInsets.all(pad),
@@ -1184,20 +1184,20 @@ class _BoardScreenState extends State<BoardScreen> {
 
           if (card == null) {
             if (isDragTarget) {
-              bgColor = _kDragTarget;
-              borderColor = _kDragTargetBorder;
+              bgColor = kDragTarget;
+              borderColor = kDragTargetBorder;
               // ── Task 2.2: frame drag targets get extra-thick border ───
               borderWidth = isFrame ? 3.0 : 2.4;
               text = _l.slotLabel(type);
             } else if (isFrame) {
-              bgColor = _kSlotFrame;
+              bgColor = kSlotFrame;
               // ── Task 2.2: bold frame border ───────────────────────────
-              borderColor = _kSlotFrameBorder;
+              borderColor = kSlotFrameBorder;
               borderWidth = 2.2;
               text = _l.slotLabel(type);
             } else {
-              bgColor = _kTableGreenMid.withOpacity(0.5);
-              borderColor = _kSlotDumpBorder;
+              bgColor = kTableGreenMid.withOpacity(0.5);
+              borderColor = kSlotDumpBorder;
               borderWidth = 1.0;
             }
           } else {
@@ -1205,8 +1205,8 @@ class _BoardScreenState extends State<BoardScreen> {
 
             if (correctRoyal) {
               // ── Task 2.3: Golden Royal ────────────────────────────────
-              bgColor     = _kRoyalGoldBg;
-              borderColor = _kRoyalGoldBorder;
+              bgColor     = kRoyalGoldBg;
+              borderColor = kRoyalGoldBorder;
               borderWidth = 2.8;
               gradient = const LinearGradient(
                 colors: [Color(0xFF4A3200), Color(0xFF2A1800), Color(0xFF4A3200)],
@@ -1215,19 +1215,19 @@ class _BoardScreenState extends State<BoardScreen> {
               );
               shadows = [
                 BoxShadow(
-                  color: _kRoyalGlowColor.withOpacity(0.55),
+                  color: kRoyalGlowColor.withOpacity(0.55),
                   blurRadius: 10,
                   spreadRadius: 1,
                 ),
               ];
             } else if (blocked) {
-              bgColor = _kBlockedBg;
-              borderColor = _kBlockedBorder;
+              bgColor = kBlockedBg;
+              borderColor = kBlockedBorder;
               borderWidth = isFrame ? 2.2 : 1.4;
               shadows = null;
             } else {
-              bgColor = _kBurgundyLight;
-              borderColor = isFrame ? _kSlotFrameBorder : _kGoldDark;
+              bgColor = kBurgundyLight;
+              borderColor = isFrame ? kSlotFrameBorder : kGoldDark;
               // ── Task 2.2: occupied frame slots keep bold border ────────
               borderWidth = isFrame ? 2.2 : 1.4;
               shadows = null;
@@ -1236,7 +1236,7 @@ class _BoardScreenState extends State<BoardScreen> {
             // Selection / hint overlays override border only
             if (game.phase == Phase.clear) {
               if (selected) {
-                borderColor = _kGoldLight;
+                borderColor = kGoldLight;
                 borderWidth = 3.5;
               } else if (clearHighlights.contains(i)) {
                 borderColor = const Color(0xFFFFC107);
@@ -1244,7 +1244,7 @@ class _BoardScreenState extends State<BoardScreen> {
               }
             }
             if (_moveMode && _moveFromIndex == i) {
-              borderColor = _kGoldLight;
+              borderColor = kGoldLight;
               borderWidth = 3.5;
             }
             if (blocked) text = '${card.label}${suitSymbol(card.suit)}\n✕';
@@ -1270,13 +1270,13 @@ class _BoardScreenState extends State<BoardScreen> {
                     fontWeight: card == null ? FontWeight.w600 : FontWeight.w800,
                     color: card == null
                         ? (isDragTarget
-                            ? _kDragTargetBorder.withOpacity(0.9)
-                            : (isFrame ? _kSlotFrameBorder.withOpacity(0.85) : Colors.transparent))
-                        : (correctRoyal ? _kGoldLight : _kCardWhite),
+                            ? kDragTargetBorder.withOpacity(0.9)
+                            : (isFrame ? kSlotFrameBorder.withOpacity(0.85) : Colors.transparent))
+                        : (correctRoyal ? kGoldLight : kCardWhite),
                     fontFamily: card != null ? 'Georgia' : null,
                     height: 1.15,
                     shadows: correctRoyal
-                        ? [const Shadow(color: _kGoldDark, blurRadius: 4)]
+                        ? [const Shadow(color: kGoldDark, blurRadius: 4)]
                         : null,
                   )),
               ),
@@ -1325,9 +1325,9 @@ class _BoardScreenState extends State<BoardScreen> {
     return Directionality(
       textDirection: _lang == AppLang.he ? TextDirection.rtl : TextDirection.ltr,
       child: Scaffold(
-        backgroundColor: _kBurgundy,
+        backgroundColor: kBurgundy,
         appBar: AppBar(
-          backgroundColor: _kBurgundyLight,
+          backgroundColor: kBurgundyLight,
           title: Column(
             crossAxisAlignment: _lang == AppLang.he ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -1335,15 +1335,15 @@ class _BoardScreenState extends State<BoardScreen> {
               RichText(
                 text: const TextSpan(children: [
                   TextSpan(text: 'Royal ', style: TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w300, letterSpacing: 1.5, color: _kGoldLight)),
+                    fontSize: 13, fontWeight: FontWeight.w300, letterSpacing: 1.5, color: kGoldLight)),
                   TextSpan(text: 'Frame', style: TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.5, color: _kGold)),
+                    fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.5, color: kGold)),
                 ]),
               ),
               if (phaseInstruction.isNotEmpty)
                 Text(phaseInstruction,
                   style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700,
-                      color: _kGold, letterSpacing: 0.5)),
+                      color: kGold, letterSpacing: 0.5)),
             ],
           ),
           actions: [
@@ -1351,7 +1351,7 @@ class _BoardScreenState extends State<BoardScreen> {
               tooltip: game.lifelinePeekAvailable ? _l.tooltipPeekAvail : _l.tooltipPeekUsed,
               onPressed: (!game.lifelinePeekAvailable || game.phase != Phase.fill || game.drawPile.isEmpty)
                   ? null : () => setState(() { game.activatePeek(); }),
-              icon: Icon(game.peekActiveNow ? Icons.visibility : Icons.visibility_outlined, color: _kGold),
+              icon: Icon(game.peekActiveNow ? Icons.visibility : Icons.visibility_outlined, color: kGold),
             ),
             Builder(builder: (ctx) {
               final bool canActivate = _godMode || game.lifelineMoveAvailable;
@@ -1361,14 +1361,14 @@ class _BoardScreenState extends State<BoardScreen> {
                       ? (_moveMode ? _l.tooltipMoveCancl : _l.tooltipMoveAvail)
                       : _l.tooltipMoveUsed);
               final Color iconColor = canActivate
-                  ? (_moveMode ? _kGoldLight : _kGold)
-                  : _kGoldDark;
+                  ? (_moveMode ? kGoldLight : kGold)
+                  : kGoldDark;
 
               return IconButton(
                 tooltip: tip,
                 style: IconButton.styleFrom(
                   foregroundColor: iconColor,
-                  disabledForegroundColor: _kGoldDark,
+                  disabledForegroundColor: kGoldDark,
                 ),
                 onPressed: canActivate
                     ? () => setState(() {
@@ -1383,13 +1383,13 @@ class _BoardScreenState extends State<BoardScreen> {
               );
             }),
             IconButton(tooltip: _l.tooltipUndo, onPressed: _undo.isNotEmpty ? _undoAction : null,
-                icon: Icon(Icons.undo, color: _undo.isNotEmpty ? _kGold : _kGoldDark)),
+                icon: Icon(Icons.undo, color: _undo.isNotEmpty ? kGold : kGoldDark)),
             IconButton(tooltip: _l.tooltipRedo, onPressed: _redo.isNotEmpty ? _redoAction : null,
-                icon: Icon(Icons.redo, color: _redo.isNotEmpty ? _kGold : _kGoldDark)),
+                icon: Icon(Icons.redo, color: _redo.isNotEmpty ? kGold : kGoldDark)),
             IconButton(tooltip: _l.tooltipRules, onPressed: _showRules,
-                icon: const Icon(Icons.menu_book_rounded, color: _kGold)),
+                icon: const Icon(Icons.menu_book_rounded, color: kGold)),
             IconButton(tooltip: _l.tooltipNewGame, onPressed: () => _newGame(),
-                icon: const Icon(Icons.refresh, color: _kGold)),
+                icon: const Icon(Icons.refresh, color: kGold)),
             _overflowMenu(),
           ],
         ),
@@ -1400,15 +1400,15 @@ class _BoardScreenState extends State<BoardScreen> {
                 children: [
                   if (_moveMode)
                     Container(
-                      color: _kGoldDark.withOpacity(0.25),
+                      color: kGoldDark.withOpacity(0.25),
                       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.open_with_rounded, size: 14, color: _kGoldLight),
+                          const Icon(Icons.open_with_rounded, size: 14, color: kGoldLight),
                           const SizedBox(width: 6),
                           Text(_moveFromIndex == null ? _l.movePick : _l.moveDrop,
-                              style: const TextStyle(color: _kGoldLight, fontSize: 12, fontWeight: FontWeight.w600)),
+                              style: const TextStyle(color: kGoldLight, fontSize: 12, fontWeight: FontWeight.w600)),
                         ],
                       ),
                     ),
@@ -1472,7 +1472,7 @@ class _BoardScreenState extends State<BoardScreen> {
                   confettiController: _confettiCtrl,
                   blastDirectionality: BlastDirectionality.explosive,
                   numberOfParticles: 40, gravity: 0.25, emissionFrequency: 0.05,
-                  colors: const [_kGold, _kGoldLight, Colors.white, Color(0xFFE91E63), Color(0xFF2196F3)],
+                  colors: const [kGold, kGoldLight, Colors.white, Color(0xFFE91E63), Color(0xFF2196F3)],
                   shouldLoop: false,
                 ),
               ),
@@ -1486,7 +1486,7 @@ class _BoardScreenState extends State<BoardScreen> {
   // ─── Debug panel ──────────────────────────────────────────────────────────
   Widget _buildDebugPanel() {
     return Container(
-      color: _kBurgundyLight.withOpacity(0.92),
+      color: kBurgundyLight.withOpacity(0.92),
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1503,7 +1503,7 @@ class _BoardScreenState extends State<BoardScreen> {
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
                 value: game.royalsProgress.clamp(0.0, 1.0),
-                minHeight: 6, backgroundColor: _kBurgundy, color: _kGold,
+                minHeight: 6, backgroundColor: kBurgundy, color: kGold,
               ),
             ),
           ),
@@ -1514,12 +1514,12 @@ class _BoardScreenState extends State<BoardScreen> {
                 Text(_l.dbgGodMode,
                     style: TextStyle(
                       fontSize: 12, fontWeight: FontWeight.w700,
-                      color: _godMode ? _kGoldLight : Colors.white38,
+                      color: _godMode ? kGoldLight : Colors.white38,
                     )),
                 const SizedBox(width: 6),
                 Switch(
                   value: _godMode,
-                  activeColor: _kGold,
+                  activeColor: kGold,
                   onChanged: (v) => setState(() => _godMode = v),
                 ),
               ]),
@@ -1527,7 +1527,7 @@ class _BoardScreenState extends State<BoardScreen> {
               FilledButton(
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF2A5C1A),
-                  foregroundColor: _kGoldLight,
+                  foregroundColor: kGoldLight,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                 ),
@@ -1546,12 +1546,12 @@ class _BoardScreenState extends State<BoardScreen> {
   }
 
   Widget _miniCard(String title, String value) => Card(
-    color: _kBurgundy, margin: const EdgeInsets.symmetric(horizontal: 3),
+    color: kBurgundy, margin: const EdgeInsets.symmetric(horizontal: 3),
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
       child: Column(children: [
-        Text(title, style: const TextStyle(fontSize: 10, color: _kGoldDark, fontWeight: FontWeight.w600)),
-        Text(value,  style: const TextStyle(fontSize: 12, color: _kGoldLight)),
+        Text(title, style: const TextStyle(fontSize: 10, color: kGoldDark, fontWeight: FontWeight.w600)),
+        Text(value,  style: const TextStyle(fontSize: 12, color: kGoldLight)),
       ]),
     ),
   );
@@ -1559,7 +1559,7 @@ class _BoardScreenState extends State<BoardScreen> {
   Widget _buildClearBar() {
     final pairsLeft = game.hasAnyPairFor11;
     return Container(
-      color: _kBurgundyLight,
+      color: kBurgundyLight,
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1571,8 +1571,8 @@ class _BoardScreenState extends State<BoardScreen> {
           const SizedBox(width: 10),
           FilledButton.tonal(
             style: FilledButton.styleFrom(
-              backgroundColor: game.canResumeFill ? _kGoldDark : Colors.grey.shade800,
-              foregroundColor: game.canResumeFill ? _kCardWhite : Colors.grey,
+              backgroundColor: game.canResumeFill ? kGoldDark : Colors.grey.shade800,
+              foregroundColor: game.canResumeFill ? kCardWhite : Colors.grey,
             ),
             onPressed: game.canResumeFill ? _resumeFill : null,
             child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -1588,7 +1588,7 @@ class _BoardScreenState extends State<BoardScreen> {
           IconButton(
             tooltip: _showClearHints ? _l.tooltipHintsHide : _l.tooltipHintsShow,
             onPressed: () => setState(() => _showClearHints = !_showClearHints),
-            icon: Icon(Icons.more_vert, color: _showClearHints ? _kGold : _kGoldDark),
+            icon: Icon(Icons.more_vert, color: _showClearHints ? kGold : kGoldDark),
           ),
         ],
       ),
@@ -1604,19 +1604,19 @@ class _BoardScreenState extends State<BoardScreen> {
           margin: const EdgeInsets.symmetric(horizontal: 32),
           padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 28),
           decoration: BoxDecoration(
-            color: _kBurgundyLight,
+            color: kBurgundyLight,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _kGold, width: 2.5),
-            boxShadow: [BoxShadow(color: _kGold.withOpacity(0.35), blurRadius: 40, spreadRadius: 4)],
+            border: Border.all(color: kGold, width: 2.5),
+            boxShadow: [BoxShadow(color: kGold.withOpacity(0.35), blurRadius: 40, spreadRadius: 4)],
           ),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Text('👑', style: TextStyle(fontSize: 56)),
             const SizedBox(height: 12),
-            Text(_l.winTitle, style: const TextStyle(color: _kGold, fontSize: 30,
+            Text(_l.winTitle, style: const TextStyle(color: kGold, fontSize: 30,
                 fontWeight: FontWeight.w900, letterSpacing: 2)),
             const SizedBox(height: 8),
             Text(_l.winSub, textAlign: TextAlign.center,
-                style: const TextStyle(color: _kGoldLight, fontSize: 14)),
+                style: const TextStyle(color: kGoldLight, fontSize: 14)),
             const SizedBox(height: 28),
             FilledButton.icon(onPressed: () => _newGame(),
                 icon: const Icon(Icons.refresh), label: Text(_l.winBtn)),
@@ -1640,9 +1640,9 @@ class _BoardScreenState extends State<BoardScreen> {
           decoration: BoxDecoration(
             color: Colors.black.withOpacity(0.72),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _kBlockedBorder, width: 1.8),
+            border: Border.all(color: kBlockedBorder, width: 1.8),
             boxShadow: [BoxShadow(
-              color: _kBlockedBorder.withOpacity(0.28),
+              color: kBlockedBorder.withOpacity(0.28),
               blurRadius: 28, spreadRadius: 2,
             )],
           ),
@@ -1651,7 +1651,7 @@ class _BoardScreenState extends State<BoardScreen> {
             const SizedBox(height: 10),
             Text(_l.lossTitle,
               style: const TextStyle(
-                color: _kBlockedBorder, fontSize: 28,
+                color: kBlockedBorder, fontSize: 28,
                 fontWeight: FontWeight.w900, letterSpacing: 2,
                 shadows: textShadow,
               )),
@@ -1663,18 +1663,18 @@ class _BoardScreenState extends State<BoardScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
               decoration: BoxDecoration(
-                color: _kBurgundy.withOpacity(0.5),
+                color: kBurgundy.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _kGoldDark.withOpacity(0.5), width: 1),
+                border: Border.all(color: kGoldDark.withOpacity(0.5), width: 1),
               ),
               child: Text(_l.lossCardsLeft(deckLeft),
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: _kGoldLight, fontSize: 13,
+                style: const TextStyle(color: kGoldLight, fontSize: 13,
                     fontWeight: FontWeight.w600, shadows: textShadow)),
             ),
             const SizedBox(height: 18),
             FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: _kBlockedBorder),
+              style: FilledButton.styleFrom(backgroundColor: kBlockedBorder),
               onPressed: () => _newGame(),
               icon: const Icon(Icons.refresh),
               label: Text(_l.lossBtn),
