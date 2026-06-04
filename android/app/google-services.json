@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "961421919288",
+    "project_id": "royal-frame-969d1",
+    "storage_bucket": "royal-frame-969d1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:961421919288:android:ea8f1f61aa95325dfd12cd",
+        "android_client_info": {
+          "package_name": "com.itay.royalframe"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "961421919288-446h04gjp1dmeq9qpdcfrqj8it36h533.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.itay.royalframe",
+            "certificate_hash": "364b25efa5fd2a862b026a3e6490976cc32b1a2e"
+          }
+        },
+        {
+          "client_id": "961421919288-1oqcid53ipgtshukmvkp90cu2g1i21g2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAoqtGMVwhL1-eFA9pJOiymlc94BXBv2So"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "961421919288-1oqcid53ipgtshukmvkp90cu2g1i21g2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "961421919288-l4kntkarcha1nsuq1tseso0m9ah2jt7p.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.royalFrameMvp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
