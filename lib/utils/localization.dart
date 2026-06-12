@@ -1,4 +1,5 @@
 import '../models/game_model.dart';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LOCALIZATION
 // ─────────────────────────────────────────────────────────────────────────────
@@ -9,42 +10,43 @@ class L {
   const L(this.lang);
   bool get isHe => lang == AppLang.he;
 
-  String get phaseInstructFill  => isHe ? 'הנח קלף'            : 'Place a Card';
-  String get phaseInstructClear => isHe ? 'מצא זוגות של 11'    : 'Find pairs of 11';
-  String get langToggleLabel    => isHe ? 'English'             : 'עברית';
+  String get phaseInstructFill => isHe ? 'הנח קלף' : 'Place a Card';
+  String get phaseInstructClear =>
+      isHe ? 'מצא זוגות של 11' : 'Find pairs of 11';
+  String get langToggleLabel => isHe ? 'English' : 'עברית';
 
-  String get tooltipPeekAvail  => isHe ? 'הצצה (חד-פעמי)'  : 'Peek (one-time)';
-  String get tooltipPeekUsed   => isHe ? 'הצצה נוצלה'       : 'Peek used';
-  String get tooltipMoveAvail  => isHe ? 'הזזה (חד-פעמי)'  : 'Move (one-time)';
-  String get tooltipMoveCancl  => isHe ? 'בטל הזזה'          : 'Cancel move';
-  String get tooltipMoveUsed   => isHe ? 'הזזה נוצלה'        : 'Move used';
-  String get tooltipUndo       => isHe ? 'בטל'                : 'Undo';
-  String get tooltipRedo       => isHe ? 'חזור'               : 'Redo';
-  String get tooltipNewGame    => isHe ? 'משחק חדש'           : 'New Game';
-  String get tooltipRules      => isHe ? 'חוקים'              : 'Rules';
-  String get tooltipMore       => isHe ? 'עוד'                : 'More';
+  String get tooltipPeekAvail => isHe ? 'הצצה (חד-פעמי)' : 'Peek (one-time)';
+  String get tooltipPeekUsed => isHe ? 'הצצה נוצלה' : 'Peek used';
+  String get tooltipMoveAvail => isHe ? 'הזזה (חד-פעמי)' : 'Move (one-time)';
+  String get tooltipMoveCancl => isHe ? 'בטל הזזה' : 'Cancel move';
+  String get tooltipMoveUsed => isHe ? 'הזזה נוצלה' : 'Move used';
+  String get tooltipUndo => isHe ? 'בטל' : 'Undo';
+  String get tooltipRedo => isHe ? 'חזור' : 'Redo';
+  String get tooltipNewGame => isHe ? 'משחק חדש' : 'New Game';
+  String get tooltipRules => isHe ? 'חוקים' : 'Rules';
+  String get tooltipMore => isHe ? 'עוד' : 'More';
 
-  String get menuDebugShow  => isHe ? 'הצג כלי פיתוח'  : 'Show debug tools';
-  String get menuDebugHide  => isHe ? 'הסתר כלי פיתוח' : 'Hide debug tools';
+  String get menuDebugShow => isHe ? 'הצג כלי פיתוח' : 'Show debug tools';
+  String get menuDebugHide => isHe ? 'הסתר כלי פיתוח' : 'Hide debug tools';
 
-  String get labelDeck       => isHe ? 'חפיסה'  : 'Deck';
-  String get labelClearPile  => isHe ? 'ניקוי'  : 'Clear';
-  String get labelCurrent    => isHe ? 'נוכחי'  : 'Current';
-  String get labelHidden     => isHe ? 'מוסתר'  : 'Hidden';
-  String get labelEmpty      => isHe ? 'ריק'    : 'Empty';
+  String get labelDeck => isHe ? 'חפיסה' : 'Deck';
+  String get labelClearPile => isHe ? 'ניקוי' : 'Clear';
+  String get labelCurrent => isHe ? 'נוכחי' : 'Current';
+  String get labelHidden => isHe ? 'מוסתר' : 'Hidden';
+  String get labelEmpty => isHe ? 'ריק' : 'Empty';
   String peekNext(String card) => isHe ? 'הבא: $card' : 'Next: $card';
 
-  String get dbgPhase    => isHe ? 'פאזה'   : 'Phase';
-  String get dbgCurrent  => isHe ? 'נוכחי'  : 'Current';
-  String get dbgDeck     => isHe ? 'חפיסה'  : 'Deck';
-  String get dbgRoyals   => isHe ? 'מלוכה'  : 'Royals';
-  String get dbgGodMode  => isHe ? 'God Mode' : 'God Mode';
+  String get dbgPhase => isHe ? 'פאזה' : 'Phase';
+  String get dbgCurrent => isHe ? 'נוכחי' : 'Current';
+  String get dbgDeck => isHe ? 'חפיסה' : 'Deck';
+  String get dbgRoyals => isHe ? 'מלוכה' : 'Royals';
+  String get dbgGodMode => isHe ? 'God Mode' : 'God Mode';
   String get dbgInstantWin => isHe ? 'Instant Win ⚡' : 'Instant Win ⚡';
 
-  String get snackIllegal     => isHe ? 'מהלך לא חוקי'      : 'Illegal move';
+  String get snackIllegal => isHe ? 'מהלך לא חוקי' : 'Illegal move';
   String get snackIllegalMove => isHe ? 'מהלך הזזה לא חוקי' : 'Illegal move';
-  
-  String get movePick => isHe ? 'בחר קלף להזזה'  : 'Pick a card to move';
+
+  String get movePick => isHe ? 'בחר קלף להזזה' : 'Pick a card to move';
   String get moveDrop => isHe ? 'בחר תא יעד ריק' : 'Pick an empty target';
 
   // Scoring Text
@@ -56,30 +58,32 @@ class L {
   String get effBonus => isHe ? 'יעילות מסגרת:' : 'Frame Efficiency:';
   String get totalScore => isHe ? 'סך הכל ניקוד' : 'TOTAL SCORE';
 
-  String get winTitle => isHe ? '!ניצחת'                : 'ROYAL WINNER!';
-  String get winSub   => isHe ? '.המסגרת המלכותית הושלמה' : 'The Royal Frame is complete.';
-  String get winBtn   => isHe ? 'משחק חדש'               : 'New Game';
+  String get winTitle => isHe ? '!ניצחת' : 'ROYAL WINNER!';
+  String get winSub =>
+      isHe ? '.המסגרת המלכותית הושלמה' : 'The Royal Frame is complete.';
+  String get winBtn => isHe ? 'משחק חדש' : 'New Game';
   String get lossTitle => isHe ? 'Game Over' : 'GAME OVER';
-  
-  String get lossSub   => isHe ? 'לא נותרו מהלכים חוקיים.' : 'No legal moves remaining.';
-  
-  String get lossBtn   => isHe ? 'נסה שוב' : 'Try Again';
+
+  String get lossSub =>
+      isHe ? 'לא נותרו מהלכים חוקיים.' : 'No legal moves remaining.';
+
+  String get lossBtn => isHe ? 'נסה שוב' : 'Try Again';
   String lossCardsLeft(int n) =>
       isHe ? 'קלפים שנשארו בחפיסה: $n' : 'Cards remaining in deck: $n';
 
   String get rulesTitle => isHe ? 'חוקים' : 'Rules';
-  String get rulesBody  => isHe
+  String get rulesBody => isHe
       ? 'קלפי מלוכה (מלך, מלכה, נסיך) חובה למקם במסגרת החיצונית בלבד. '
-        'קלפי מספרים אפשר לשים בכל מקום פנוי. '
-        'כשהלוח מתמלא, יש למצוא ולפנות זוגות של קלפי מספרים שסכומם 11. '
-        'חובה לפנות את כל הקלפים האפשריים לפני שחוזרים להניח שוב! '
-        'הניצחון מוכרז רק כשהמסגרת מלאה במלוכה, החפיסה נגמרה, ואין זוגות 11 לפנות. '
-        'המטרה: למלא את כל 12 משבצות המסגרת בקלפי מלוכה. תהנו!'
+            'קלפי מספרים אפשר לשים בכל מקום פנוי. '
+            'כשהלוח מתמלא, יש למצוא ולפנות זוגות של קלפי מספרים שסכומם 11. '
+            'חובה לפנות את כל הקלפים האפשריים לפני שחוזרים להניח שוב! '
+            'הניצחון מוכרז רק כשהמסגרת מלאה במלוכה, החפיסה נגמרה, ואין זוגות 11 לפנות. '
+            'המטרה: למלא את כל 12 משבצות המסגרת בקלפי מלוכה. תהנו!'
       : 'King, Queen, Jack must go in the outer frame. '
-        'Match pairs of numbers that sum to 11 to clear space. '
-        'You must clear all possible pairs before you can proceed to place cards again! '
-        'Win is declared only when the frame holds 12 royals, the deck is empty, and no 11-pairs remain. '
-        'Fill the frame to win. Enjoy!';
+            'Match pairs of numbers that sum to 11 to clear space. '
+            'You must clear all possible pairs before you can proceed to place cards again! '
+            'Win is declared only when the frame holds 12 royals, the deck is empty, and no 11-pairs remain. '
+            'Fill the frame to win. Enjoy!';
   String get btnReplayTutorial => isHe ? 'הפעל מדריך מחדש' : 'Replay Tutorial';
   // Main Menu & Leaderboard Strings
   String get menuResume => isHe ? 'המשך משחק' : 'Resume Game';
@@ -89,30 +93,33 @@ class L {
   // Welcome Screen Strings
   String get welcomeHint => isHe ? 'הזן את השם שלך' : 'Enter your name';
   String get welcomeBtn => isHe ? 'התחל לשחק' : 'Start Playing';
-  
+
   String get dialogHomeTitle => isHe ? 'חזרה לתפריט' : 'Return to Menu';
-  String get dialogHomeBody => isHe ? 'המשחק ימתין לך ברקע. האם להמשיך?' : 'The game will pause and wait in the background. Return to menu?';
+  String get dialogHomeBody => isHe
+      ? 'המשחק ימתין לך ברקע. האם להמשיך?'
+      : 'The game will pause and wait in the background. Return to menu?';
   String get btnYes => isHe ? 'כן' : 'Yes';
   String get btnNo => isHe ? 'לא' : 'No';
-  
+
   String get tabHighScore => isHe ? 'שיא (משחק בודד)' : 'High Score';
   String get tabTotalScore => isHe ? 'סך הכל נקודות' : 'Total Score';
-  String welcomeBack(String name) => isHe ? 'ברוך שובך, $name' : 'Welcome back, $name';
+  String welcomeBack(String name) =>
+      isHe ? 'ברוך שובך, $name' : 'Welcome back, $name';
 
   String slotLabel(SlotType t) {
     if (isHe) {
       return switch (t) {
         SlotType.kingCorner => 'מלך',
-        SlotType.queenEdge  => 'מלכה',
-        SlotType.jackEdge   => 'נסיך',
-        SlotType.innerDump  => '',
+        SlotType.queenEdge => 'מלכה',
+        SlotType.jackEdge => 'נסיך',
+        SlotType.innerDump => '',
       };
     }
     return switch (t) {
       SlotType.kingCorner => 'K',
-      SlotType.queenEdge  => 'Q',
-      SlotType.jackEdge   => 'J',
-      SlotType.innerDump  => '',
+      SlotType.queenEdge => 'Q',
+      SlotType.jackEdge => 'J',
+      SlotType.innerDump => '',
     };
   }
 }

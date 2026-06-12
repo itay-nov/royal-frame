@@ -9,15 +9,13 @@ import 'screens/main_menu_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // אתחול פיירבייס עם האופציות שנוצרו ב-configure
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   final prefs = await SharedPreferences.getInstance();
   final String? savedName = prefs.getString('playerName');
-  
+
   runApp(RoyalFrameApp(initialName: savedName));
 }
 
@@ -44,15 +42,22 @@ class RoyalFrameApp extends StatelessWidget {
           style: FilledButton.styleFrom(
             backgroundColor: kGold,
             foregroundColor: kBurgundy,
-            textStyle: const TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.8),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            textStyle: const TextStyle(
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
           ),
         ),
         textButtonTheme: TextButtonThemeData(
           style: TextButton.styleFrom(foregroundColor: kGoldLight),
         ),
       ),
-      home: initialName == null ? const WelcomeScreen() : const MainMenuScreen(),
+      home: initialName == null
+          ? const WelcomeScreen()
+          : const MainMenuScreen(),
     );
   }
 }
