@@ -127,10 +127,12 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
     final texts = widget.isClearPhase
         ? (isHe
               ? [
-                  'שלב הפינוי! בחר שני קלפי מספרים שסכומם יחד הוא 11 כדי לפנות מקום בלוח. נסה עכשיו!',
+                  'שלב הפינוי! עלייך לפנות קלפים ככל הניתן ורק אז תוכל למלא שוב.
+בחר שני קלפי מספרים שסכומם 11 כדי לפנות אותם. נסה עכשיו!',
                 ]
               : [
-                  'Clear Phase! Select two number cards that sum to exactly 11 to make room. Try it now!',
+                  'Clear Phase! You must clear as many cards as possible — only then can you fill again.
+Select two number cards that sum to exactly 11 to clear them. Try it now!',
                 ])
         : (isHe
               ? [

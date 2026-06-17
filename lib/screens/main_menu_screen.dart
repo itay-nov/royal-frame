@@ -36,7 +36,14 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     super.initState();
     _loadPlayerName();
     _loadMuteState();
+    _loadSavedLang();
     HapticService.load();
+  }
+
+  Future<void> _loadSavedLang() async {
+    final lang = await L.loadLang();
+    if (!mounted) return;
+    setState(() => _lang = lang);
   }
 
   Future<void> _loadPlayerName() async {
@@ -156,9 +163,9 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               tooltip: _lang == AppLang.he ? 'English' : 'עברית',
               icon: const Icon(Icons.language, color: kGold),
               onPressed: () {
-                setState(() {
-                  _lang = _lang == AppLang.he ? AppLang.en : AppLang.he;
-                });
+                final newLang = _lang == AppLang.he ? AppLang.en : AppLang.he;
+                setState(() => _lang = newLang);
+                L.saveLang(newLang);
               },
             ),
             IconButton(

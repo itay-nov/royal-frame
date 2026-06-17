@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game_model.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -9,6 +10,19 @@ class L {
   final AppLang lang;
   const L(this.lang);
   bool get isHe => lang == AppLang.he;
+
+  static const String _langPrefKey = 'appLang';
+
+  static Future<void> saveLang(AppLang lang) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_langPrefKey, lang.name);
+  }
+
+  static Future<AppLang> loadLang() async {
+    final prefs = await SharedPreferences.getInstance();
+    final s = prefs.getString(_langPrefKey);
+    return s == 'he' ? AppLang.he : AppLang.en;
+  }
 
   String get phaseInstructFill => isHe ? 'הנח קלף' : 'Place a Card';
   String get phaseInstructClear =>

@@ -99,9 +99,12 @@ class _BoardScreenState extends State<BoardScreen>
   bool _showClearTutorial = false;
   bool _hasSeenInitialTutorial = false;
   bool _hasSeenClearTutorial = false;
+  bool _tutorialStateLoaded = false;
 
   // Prevents duplicate XP awards if _checkEndState is called more than once.
   bool _xpAwardedThisGame = false;
+  // Prevents duplicate stats/goal updates when overlay rebuilds.
+  bool _statsUpdatedThisGame = false;
 
   // Audio
   static const String _mutePrefKey = 'royalFrameMuted';
@@ -157,6 +160,7 @@ class _BoardScreenState extends State<BoardScreen>
 
     _initAudio();
     _loadMuteState();
+    _loadSavedLang();
     HapticService.load();
     _loadTutorialState();
     _startUITimer();
@@ -177,6 +181,12 @@ class _BoardScreenState extends State<BoardScreen>
         _         => GameDifficulty.hard,
       };
     });
+  }
+
+  Future<void> _loadSavedLang() async {
+    final lang = await L.loadLang();
+    if (!mounted) return;
+    setState(() => _lang = lang);
   }
 
   Future<void> _loadTutorialState() async {
@@ -211,6 +221,8 @@ class _BoardScreenState extends State<BoardScreen>
       _hintedPair.clear();
       await prefs.setBool('hasSeenTutorialV2_$playerId', true);
     }
+
+    _tutorialStateLoaded = true;
   }
 
   Future<void> _loadMuteState() async {
@@ -580,6 +592,7 @@ class _BoardScreenState extends State<BoardScreen>
       _isAnimatingClear = false;
       _errorHighlights.clear();
       _xpAwardedThisGame = false;
+      _statsUpdatedThisGame = false;
     });
     _restartHintTimer();
     _startUITimer();
@@ -614,7 +627,7 @@ class _BoardScreenState extends State<BoardScreen>
         XpService.addXP(xp);
       }
       setState(() => _showGameOverOverlay = false);
-      Future.delayed(const Duration(milliseconds: 1500), () {
+      Future.delayed(const Duration(milliseconds: 400), () {
         if (mounted &&
             game.phase == Phase.gameOver &&
             ModalRoute.of(context)?.isCurrent == true) {
@@ -774,6 +787,7 @@ class _BoardScreenState extends State<BoardScreen>
       }
 
       if (game.phase == Phase.clear &&
+          _tutorialStateLoaded &&
           !_hasSeenClearTutorial &&
           !_showTutorial) {
         _showClearTutorial = true;
@@ -1928,10 +1942,11 @@ class _BoardScreenState extends State<BoardScreen>
                             _showDifficultyPicker();
                           else if (value == 'cosmetics')
                             _showThemeGallery();
-                          else if (value == 'lang')
-                            setState(() => _lang = _lang == AppLang.he
-                                ? AppLang.en
-                                : AppLang.he);
+                          else if (value == 'lang') {
+                            final newLang = _lang == AppLang.he ? AppLang.en : AppLang.he;
+                            setState(() => _lang = newLang);
+                            L.saveLang(newLang);
+                          }
                           else if (value == 'mute')
                             _toggleMute();
                           else if (value == 'haptic')
@@ -2361,8 +2376,11 @@ class _BoardScreenState extends State<BoardScreen>
       );
 
   Widget _buildWinnerOverlay() {
-    DbService().updatePlayerStats(game.score, true);
-    DailyGoalService.addProgress(GoalType.scorePoints, game.score);
+    if (!_statsUpdatedThisGame) {
+      _statsUpdatedThisGame = true;
+      DbService().updatePlayerStats(game.score, true);
+      DailyGoalService.addProgress(GoalType.scorePoints, game.score);
+    }
 
     final int baseScore = game.score;
     const int winBonus = 1000;
@@ -2553,8 +2571,11 @@ class _BoardScreenState extends State<BoardScreen>
   }
 
   Widget _buildGameOverOverlay() {
-    DbService().updatePlayerStats(game.score, false);
-    DailyGoalService.addProgress(GoalType.scorePoints, game.score);
+    if (!_statsUpdatedThisGame) {
+      _statsUpdatedThisGame = true;
+      DbService().updatePlayerStats(game.score, false);
+      DailyGoalService.addProgress(GoalType.scorePoints, game.score);
+    }
     final deckLeft = game.cardsRemainingDisplay;
     const textShadow = [
       Shadow(color: Colors.black, blurRadius: 8, offset: Offset(0, 2)),
