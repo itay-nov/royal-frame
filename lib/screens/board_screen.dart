@@ -5,12 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:confetti/confetti.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../theme_constants.dart';
 import '../models/game_model.dart';
 import '../utils/localization.dart';
 import '../widgets/tutorial_overlay.dart';
 import '../services/db_service.dart';
 import '../services/haptic_service.dart';
+import '../services/duel_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/daily_goal_service.dart';
 import '../services/xp_service.dart';
@@ -24,12 +26,17 @@ class BoardScreen extends StatefulWidget {
   final bool forceTutorial;
   // When true, the difficulty picker opens immediately on first frame.
   final bool showNewGamePicker;
+  // Duel mode — set by DuelSetupScreen when a match is found.
+  final DuelSession? duelSession;
+  final bool isHost;
 
   const BoardScreen({
     super.key,
     this.existingGame,
     this.forceTutorial = false,
     this.showNewGamePicker = false,
+    this.duelSession,
+    this.isHost = false,
   });
 
   @override
@@ -48,6 +55,12 @@ class _BoardScreenState extends State<BoardScreen>
 
   Timer? _inactivityTimer;
   Timer? _uiTimer;
+
+  // Duel mode state
+  DuelSession? _duelSession;
+  StreamSubscription<DuelSession?>? _duelSub;
+  int _opponentScore = 0;
+  bool _duelFinishedReported = false;
 
   // Extreme countdown limit in seconds.
   static const int _extremeSeconds = 180;
@@ -167,6 +180,34 @@ class _BoardScreenState extends State<BoardScreen>
     DailyGoalService.load();
     XpService.load();
     BadgeService.load();
+    _initDuelMode();
+  }
+
+  // ── Duel mode ──────────────────────────────────────────────────────────────
+
+  void _initDuelMode() {
+    if (widget.duelSession == null) return;
+    _duelSession = widget.duelSession;
+
+    // In duel mode use the shared seed so both players get the same deck.
+    final seed = _duelSession!.seed;
+    game = GameState.newGame(seed: seed);
+    game.evaluateGameOverInFill();
+
+    _duelSub = DuelService.watchDuel(_duelSession!.duelId).listen((updated) {
+      if (!mounted || updated == null) return;
+      setState(() {
+        _duelSession = updated;
+        final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+        final isHost = updated.hostUid == myUid;
+        _opponentScore = isHost ? updated.guestScore : updated.hostScore;
+      });
+    });
+  }
+
+  Future<void> _syncDuelScore() async {
+    if (_duelSession == null) return;
+    await DuelService.syncScore(_duelSession!.duelId, game.score);
   }
 
   Future<void> _loadSavedDifficulty() async {
@@ -443,6 +484,7 @@ class _BoardScreenState extends State<BoardScreen>
       try { p.stop(); } catch (_) {}
       p.dispose();
     }
+    _duelSub?.cancel();
     super.dispose();
   }
 
@@ -530,6 +572,8 @@ class _BoardScreenState extends State<BoardScreen>
       _moveFromIndex = null;
       _showGameOverOverlay = game.phase == Phase.gameOver;
     });
+    // Stop any lingering win/loss audio so normal sound effects work again.
+    _stopAllAudioNow();
     DailyGoalService.addProgress(GoalType.useUndo, 1);
     _restartHintTimer();
   }
@@ -1035,6 +1079,24 @@ class _BoardScreenState extends State<BoardScreen>
         },
       ),
     );
+  }
+
+  Future<void> _shareOnWhatsApp(int totalScore) async {
+    final diff = _difficultyLabel;
+    final int elapsedSecs = (game.endTime ?? DateTime.now())
+        .difference(game.startTime)
+        .inSeconds;
+    final m = (elapsedSecs ~/ 60).toString().padLeft(2, '0');
+    final s = (elapsedSecs % 60).toString().padLeft(2, '0');
+    final time = '$m:$s';
+    final text =
+        'I just won Royal Frame on $diff in $time with a score of $totalScore! '
+        'Can you beat me? 👑 https://play.google.com/store/apps/details?id=com.royalframe.app';
+    final encoded = Uri.encodeComponent(text);
+    final uri = Uri.parse('https://wa.me/?text=$encoded');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   // ── Card widget helpers ───────────────────────────────────────────────────
@@ -1581,21 +1643,27 @@ class _BoardScreenState extends State<BoardScreen>
             final isHinted = _hintedPair.contains(i);
 
             Widget cellContent = card == null
-                ? Center(
-                    child: Text(
-                      text,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: isDragTarget
-                            ? kDragTargetBorder.withOpacity(0.9)
-                            : (isFrame
-                                ? kSlotFrameBorder.withOpacity(0.85)
-                                : Colors.transparent),
-                        height: 1.15,
-                      ),
-                    ),
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (text.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            text,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: isDragTarget
+                                  ? kDragTargetBorder.withOpacity(0.95)
+                                  : kSlotFrameBorder.withOpacity(0.85),
+                              height: 1.1,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                    ],
                   )
                 : _playingCard(card);
 
