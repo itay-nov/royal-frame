@@ -656,6 +656,11 @@ class _BoardScreenState extends State<BoardScreen>
         };
         XpService.addXP(xp);
       }
+      // Duel: report final score as winner
+      if (_duelSession != null && !_duelFinishedReported) {
+        _duelFinishedReported = true;
+        DuelService.markFinished(_duelSession!.duelId, game.score);
+      }
       setState(() => _showGameOverOverlay = false);
       _confettiCtrl.play();
       _playWin();
@@ -670,6 +675,11 @@ class _BoardScreenState extends State<BoardScreen>
         };
         XpService.addXP(xp);
       }
+      // Duel: report final score as loser
+      if (_duelSession != null && !_duelFinishedReported) {
+        _duelFinishedReported = true;
+        DuelService.markFinished(_duelSession!.duelId, game.score);
+      }
       setState(() => _showGameOverOverlay = false);
       Future.delayed(const Duration(milliseconds: 400), () {
         if (mounted &&
@@ -679,6 +689,12 @@ class _BoardScreenState extends State<BoardScreen>
           _playLoss();
         }
       });
+    }
+    // Push live score to Firestore whenever game is still ongoing.
+    if (_duelSession != null &&
+        game.phase != Phase.winner &&
+        game.phase != Phase.gameOver) {
+      _syncDuelScore();
     }
   }
 
@@ -1919,10 +1935,13 @@ class _BoardScreenState extends State<BoardScreen>
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
 
-                // Action buttons
-                Row(
+                // Action buttons — FittedBox scales down on narrow screens
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _buildCompactIcon(Icons.home, kGold, () {
@@ -1966,16 +1985,16 @@ class _BoardScreenState extends State<BoardScreen>
                         );
                       }
                     }),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 2),
                     _buildCompactIcon(
                       Icons.undo,
                       _undo.isNotEmpty ? kGold : kGoldDark,
                       _undo.isNotEmpty ? _undoAction : null,
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 2),
                     _buildCompactIcon(
                         Icons.refresh, kGold, _openDifficultyPicker),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 2),
 
                     _buildCompactIcon(
                       DailyGoalService.current?.isCompleted == true
@@ -1986,7 +2005,7 @@ class _BoardScreenState extends State<BoardScreen>
                           : kGold,
                       _showDailyGoal,
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 2),
 
                     SizedBox(
                       width: 32,
@@ -2125,7 +2144,8 @@ class _BoardScreenState extends State<BoardScreen>
                       ),
                     ),
                   ],
-                ),
+                  ),  // Row
+                ),    // FittedBox
               ],
             ),
           ),
@@ -2158,6 +2178,69 @@ class _BoardScreenState extends State<BoardScreen>
                                   color: kGoldLight,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      if (game.phase == Phase.clear &&
+                          game.hasAnyPairFor11 &&
+                          !_isAnimatingClear &&
+                          !_showClearTutorial)
+                        Container(
+                          color: kBurgundy.withOpacity(0.85),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 4, horizontal: 12),
+                          child: Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                _lang == AppLang.he
+                                    ? 'פנה זוגות של 11'
+                                    : 'Clear pairs summing to 11',
+                                style: const TextStyle(
+                                  color: kGoldLight,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              GestureDetector(
+                                onTap: () {
+                                  _pushUndo();
+                                  final ok = game.forceResumeFill();
+                                  if (ok) {
+                                    setState(() {});
+                                    _maybeTriggerPhaseTransitionFeedback(
+                                        Phase.clear, game.phase);
+                                    _checkEndState();
+                                    _restartHintTimer();
+                                  } else {
+                                    _undo.removeLast();
+                                  }
+                                },
+                                child: Container(
+                                  padding:
+                                      const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: kGoldDark.withOpacity(0.3),
+                                    borderRadius:
+                                        BorderRadius.circular(6),
+                                    border: Border.all(
+                                        color: kGoldDark, width: 1),
+                                  ),
+                                  child: Text(
+                                    _lang == AppLang.he ? 'דלג' : 'Skip',
+                                    style: const TextStyle(
+                                      color: kGold,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ],
@@ -2233,6 +2316,10 @@ class _BoardScreenState extends State<BoardScreen>
                   if (game.phase == Phase.gameOver &&
                       _showGameOverOverlay)
                     _buildGameOverOverlay(),
+
+                  // Duel HUD — live opponent score + result banner
+                  if (_duelSession != null)
+                    _buildDuelHud(),
 
                   if (_showTutorial)
                     TutorialOverlay(
@@ -2443,6 +2530,128 @@ class _BoardScreenState extends State<BoardScreen>
         ),
       );
 
+  Widget _buildDuelHud() {
+    final session = _duelSession;
+    if (session == null) return const SizedBox.shrink();
+
+    final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final isHost = session.hostUid == myUid;
+    final myScore = game.score;
+    final opponentName = isHost
+        ? (session.guestName ?? 'Opponent')
+        : session.hostName;
+
+    // Result banner when duel is finished
+    if (session.isFinished) {
+      final iWon = session.winnerId == myUid;
+      return Positioned(
+        top: 0,
+        left: 0,
+        right: 0,
+        child: IgnorePointer(
+          child: Container(
+            color: iWon
+                ? kGold.withOpacity(0.88)
+                : Colors.redAccent.withOpacity(0.82),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  iWon ? '  You Win the Duel!' : '  Opponent Wins the Duel',
+                  style: TextStyle(
+                    color: iWon ? Colors.black : Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Live score HUD strip at the bottom
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: Container(
+          color: Colors.black.withOpacity(0.65),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Row(
+            children: [
+              // My score
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'YOU',
+                      style: TextStyle(
+                        color: kGoldLight,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    Text(
+                      '$myScore',
+                      style: const TextStyle(
+                        color: kGold,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // VS divider
+              Container(
+                width: 1,
+                height: 32,
+                color: kGoldDark.withOpacity(0.6),
+                margin: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              // Opponent score
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      opponentName.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white60,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    Text(
+                      '$_opponentScore',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildWinnerOverlay() {
     if (!_statsUpdatedThisGame) {
       _statsUpdatedThisGame = true;
@@ -2590,6 +2799,22 @@ class _BoardScreenState extends State<BoardScreen>
                 ),
               ),
 
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF25D366),
+                  side: const BorderSide(color: Color(0xFF25D366), width: 1.5),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 20, vertical: 10),
+                ),
+                onPressed: () => _shareOnWhatsApp(totalScore),
+                icon: const Icon(Icons.share, size: 18),
+                label: const Text(
+                  'Share on WhatsApp',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 10),
+
               FilledButton.icon(
                 onPressed: _restartCurrentGame,
                 icon: const Icon(Icons.refresh),
@@ -2609,8 +2834,8 @@ class _BoardScreenState extends State<BoardScreen>
       borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding:
-            const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-        child: Icon(icon, size: 24, color: color),
+            const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Icon(icon, size: 22, color: color),
       ),
     );
   }

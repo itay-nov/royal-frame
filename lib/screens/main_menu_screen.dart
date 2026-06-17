@@ -6,6 +6,7 @@ import '../theme_constants.dart';
 import '../models/game_model.dart';
 import '../utils/localization.dart';
 import 'board_screen.dart';
+import 'duel_setup_screen.dart';
 import 'welcome_screen.dart';
 import '../services/db_service.dart';
 import '../services/auth_service.dart';
@@ -236,6 +237,16 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
             ),
             const SizedBox(height: 16),
             _buildMenuButton('Tutorial', Icons.school_outlined, _startTutorial),
+            const SizedBox(height: 16),
+            _buildMenuButton(
+              'Duel Mode',
+              Icons.sports_kabaddi,
+              () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const DuelSetupScreen(),
+                ),
+              ),
+            ),
             const SizedBox(height: 16),
 
             TextButton.icon(
