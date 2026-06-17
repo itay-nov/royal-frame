@@ -14,8 +14,7 @@ class AuthService {
       final credential = await _auth.signInAnonymously();
       await credential.user?.updateDisplayName(displayName);
       return credential;
-    } catch (e) {
-      print("Error signing in anonymously: $e");
+    } catch (_) {
       return null;
     }
   }
@@ -38,8 +37,7 @@ class AuthService {
         );
         return await _auth.signInWithCredential(credential);
       }
-    } catch (e) {
-      print("Error during Google Sign In: $e");
+    } catch (_) {
       return null;
     }
   }
@@ -54,8 +52,7 @@ class AuthService {
       } else {
         return await _auth.signInWithProvider(appleProvider);
       }
-    } catch (e) {
-      print("Error during Apple Sign In: $e");
+    } catch (_) {
       return null;
     }
   }
@@ -70,8 +67,7 @@ class AuthService {
     assert(kIsWeb, 'sendSmsCodeWeb must only be called on Web');
     try {
       return await _auth.signInWithPhoneNumber(phoneNumber);
-    } catch (e) {
-      print("Error sending SMS (web): $e");
+    } catch (_) {
       return null;
     }
   }
@@ -84,9 +80,8 @@ class AuthService {
     assert(kIsWeb, 'confirmSmsCodeWeb must only be called on Web');
     try {
       return await confirmationResult.confirm(smsCode);
-    } catch (e) {
-      print("Error confirming SMS code (web): $e");
-      rethrow; // let the UI show the specific Firebase error
+    } catch (_) {
+      rethrow;
     }
   }
 
@@ -155,8 +150,8 @@ class AuthService {
       if (!kIsWeb) {
         await GoogleSignIn.instance.signOut();
       }
-    } catch (e) {
-      print("Error signing out: $e");
+    } catch (_) {
+      // ignore
     }
   }
 }
