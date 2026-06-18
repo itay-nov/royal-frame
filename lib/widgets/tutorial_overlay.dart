@@ -127,25 +127,23 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
     final texts = widget.isClearPhase
         ? (isHe
               ? [
-                  'שלב הפינוי! עלייך לפנות קלפים ככל הניתן ורק אז תוכל למלא שוב.\n'
-                  'בחר שני קלפי מספרים שסכומם 11 כדי לפנות אותם. נסה עכשיו!',
+                  '🧹 שלב הפינוי! הקש על שני קלפי מספרים שסכומם 11 כדי להסיר אותם. פנה כמה שיותר לפני המילוי מחדש!',
                 ]
               : [
-                  'Clear Phase! You must clear as many cards as possible — only then can you fill again.\n'
-                  'Select two number cards that sum to exactly 11 to clear them. Try it now!',
+                  '🧹 Clear Phase! Tap two number cards that add up to 11 to remove them. Clear as many as you can before refilling!',
                 ])
         : (isHe
               ? [
-                  'ברוך הבא ל-Royal Frame! זו החפיסה שלך. משוך קלפים כדי למלא את הלוח.',
-                  'קלפי מלוכה (J, Q, K) חייבים להיות מונחים במסגרת החיצונית בלבד. נסה להשלים את כל ה-12!',
-                  'קלפי מספרים יכולים להיות מונחים בכל מקום. 4 המשבצות הפנימיות הן "פח" מצוין לזרוק אליו מספרים מבלי לחסום מלוכה.',
-                  'עכשיו נסה למלא את כל הלוח! כשהלוח יתמלא לגמרי, יתחיל שלב הפינוי בו תפנה זוגות.',
+                  'הקש על החפיסה כדי למשוך קלף, ואז הקש על משבצת ריקה כדי להניח אותו. מלא את כל הלוח!',
+                  '👑 קלפי מלוכה (J, Q, K) שייכים אך ורק ב-12 המשבצות החיצוניות. שמור על המסגרת מלכותית!',
+                  '4 המשבצות המרכזיות הן "אזור ההשלכה" שלך — חנה כאן קלפי מספרים כדי שלא יחסמו את קלפי המלוכה.',
+                  'מלא כל משבצת כדי להשלים את הלוח — ואז יתחיל שלב הפינוי!',
                 ]
               : [
-                  'Welcome to Royal Frame! This is your deck. Draw cards to fill the board.',
-                  'Royals (J, Q, K) must go in the outer frame. Try to complete all 12!',
-                  'Number cards go anywhere. The inner 4 slots are a great "dump" for numbers so you don\'t block Royals.',
-                  'Now try to fill the board with cards! Once the table is full, you will clear pairs that sum to exactly 11.',
+                  'Tap the deck to draw a card, then tap an empty slot to place it. Fill the whole board!',
+                  '👑 Royals (J, Q, K) ONLY belong in the outer 12 slots. Keep the frame royal!',
+                  'The 4 center slots are your "dump zone" — park number cards here so they don\'t block Royals.',
+                  'Fill every slot to complete the board — then the Clear Phase begins!',
                 ]);
 
     final alignments = widget.isClearPhase
@@ -197,6 +195,22 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        if (!widget.isClearPhase)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              isHe
+                                  ? 'שלב ${_step + 1} / 4'
+                                  : 'Step ${_step + 1} / 4',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: kGold,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                          ),
                         Text(
                           texts[_step],
                           textAlign: TextAlign.center,
@@ -207,6 +221,32 @@ class _TutorialOverlayState extends State<TutorialOverlay> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
+                        if (!widget.isClearPhase) ...[
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: List.generate(4, (i) {
+                              final isCurrent = i == _step;
+                              return Container(
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                ),
+                                width: isCurrent ? 10 : 8,
+                                height: isCurrent ? 10 : 8,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: isCurrent
+                                      ? kGold
+                                      : Colors.transparent,
+                                  border: Border.all(
+                                    color: isCurrent ? kGold : kGoldDark,
+                                    width: 1.5,
+                                  ),
+                                ),
+                              );
+                            }),
+                          ),
+                        ],
                         const SizedBox(height: 24),
                         Directionality(
                           textDirection: isHe
