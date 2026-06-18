@@ -1460,7 +1460,7 @@ class _BoardScreenState extends State<BoardScreen>
     );
 
     var deckTagText =
-        '${_l.labelDeck}\n${game.cardsRemainingDisplay}';
+        '${_l.labelDeck}  ${game.cardsRemainingDisplay}';
     if (peek != null) {
       deckTagText +=
           '\n${_l.peekNext('${peek.label}${suitSymbol(peek.suit)}')}';
@@ -3609,22 +3609,22 @@ class DeckTag extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding:
-          const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+          const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: kBurgundy.withOpacity(0.82),
-        borderRadius: BorderRadius.circular(5),
+        color: kBurgundy.withOpacity(0.90),
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(
-            color: kGoldDark.withOpacity(0.6), width: 0.8),
+            color: kGoldDark.withOpacity(0.8), width: 1.0),
       ),
       child: Text(
         text,
         textAlign: TextAlign.center,
         style: const TextStyle(
           color: kGoldLight,
-          fontSize: 9,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.6,
-          height: 1.25,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+          height: 1.3,
         ),
       ),
     );
