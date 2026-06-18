@@ -103,6 +103,8 @@ class L {
   String get menuResume => isHe ? 'המשך משחק' : 'Resume Game';
   String get menuNewGame => isHe ? 'משחק חדש' : 'New Game';
   String get menuLeaderboard => isHe ? 'טבלת מובילים' : 'Leaderboard';
+  String get menuTutorial => isHe ? 'הדרכה' : 'Tutorial';
+  String get menuDuelMode => isHe ? 'מצב דו-קרב' : 'Duel Mode';
   String get menuChangePlayer => isHe ? 'החלף שחקן' : 'Change Player';
   // Welcome Screen Strings
   String get welcomeHint => isHe ? 'הזן את השם שלך' : 'Enter your name';

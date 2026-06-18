@@ -29,8 +29,20 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   final TextEditingController _nameCtrl = TextEditingController();
   final AuthService _authService = AuthService();
   bool _isLoading = false;
-  final AppLang _lang = AppLang.en;
+  AppLang _lang = AppLang.en;
   L get _l => L(_lang);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedLang();
+  }
+
+  Future<void> _loadSavedLang() async {
+    final lang = await L.loadLang();
+    if (!mounted) return;
+    setState(() => _lang = lang);
+  }
 
   @override
   void dispose() {
@@ -352,60 +364,104 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   // ─── Build ─────────────────────────────────────────────────────────────────
 
+  void _toggleLang() {
+    final newLang = _lang == AppLang.he ? AppLang.en : AppLang.he;
+    setState(() => _lang = newLang);
+    L.saveLang(newLang);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBurgundy,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('👑', style: TextStyle(fontSize: 80)),
-              const SizedBox(height: 12),
-              const Text(
-                'ROYAL FRAME',
-                style: TextStyle(
-                  color: kGold,
-                  fontSize: 32,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 4,
-                ),
-              ),
-
-              const SizedBox(height: 56),
-
-              SizedBox(
-                width: _kButtonWidth,
-                child: TextField(
-                  controller: _nameCtrl,
-                  style: const TextStyle(color: kGoldLight, fontSize: 17),
-                  textAlign: TextAlign.center,
-                  decoration: InputDecoration(
-                    hintText: 'Enter your name for Guest Login',
-                    hintStyle: TextStyle(
-                      color: kGoldDark.withOpacity(0.55),
-                      fontSize: 15,
-                    ),
-                    enabledBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: kGoldDark),
-                    ),
-                    focusedBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: kGold, width: 2),
+      body: Stack(
+        children: [
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('👑', style: TextStyle(fontSize: 80)),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'ROYAL FRAME',
+                    style: TextStyle(
+                      color: kGold,
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 4,
                     ),
                   ),
-                  onSubmitted: (_) => _startGame(),
-                ),
+
+                  const SizedBox(height: 56),
+
+                  SizedBox(
+                    width: _kButtonWidth,
+                    child: TextField(
+                      controller: _nameCtrl,
+                      style: const TextStyle(color: kGoldLight, fontSize: 17),
+                      textAlign: TextAlign.center,
+                      decoration: InputDecoration(
+                        hintText: _l.welcomeHint,
+                        hintStyle: TextStyle(
+                          color: kGoldDark.withOpacity(0.55),
+                          fontSize: 15,
+                        ),
+                        enabledBorder: const UnderlineInputBorder(
+                          borderSide: BorderSide(color: kGoldDark),
+                        ),
+                        focusedBorder: const UnderlineInputBorder(
+                          borderSide: BorderSide(color: kGold, width: 2),
+                        ),
+                      ),
+                      onSubmitted: (_) => _startGame(),
+                    ),
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  _isLoading
+                      ? const CircularProgressIndicator(color: kGold)
+                      : _buildButtonGroup(),
+                ],
               ),
-
-              const SizedBox(height: 28),
-
-              _isLoading
-                  ? const CircularProgressIndicator(color: kGold)
-                  : _buildButtonGroup(),
-            ],
+            ),
           ),
+          // Prominent language toggle pinned to top-right
+          Positioned(
+            top: 48,
+            right: 16,
+            child: _buildLangToggle(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLangToggle() {
+    // Shows the *target* language (the one you'll switch TO) so the player
+    // instantly sees "עברית" if the app is in English, or "English" if in Hebrew.
+    final targetLabel = _lang == AppLang.he ? 'English' : 'עברית';
+    return OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        backgroundColor: Colors.black.withOpacity(0.35),
+        foregroundColor: kGold,
+        side: const BorderSide(color: kGold, width: 1.5),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      ),
+      onPressed: _toggleLang,
+      icon: const Icon(Icons.language, size: 18, color: kGold),
+      label: Text(
+        targetLabel,
+        style: const TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          color: kGold,
+          letterSpacing: 0.3,
         ),
       ),
     );

@@ -82,6 +82,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
             BoardScreen(
               existingGame: isResume ? _activeGame : null,
               showNewGamePicker: !isResume,
+              initialLang: _lang,
             ),
       ),
     );
@@ -101,7 +102,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     final returnedGame = await Navigator.of(context).push<GameState>(
       MaterialPageRoute(
         builder: (_) =>
-            BoardScreen(existingGame: _activeGame, forceTutorial: true),
+            BoardScreen(existingGame: _activeGame, forceTutorial: true, initialLang: _lang),
       ),
     );
 
@@ -133,32 +134,61 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         titleSpacing: 12,
         title: Row(
           children: [
-            RichText(
-              text: const TextSpan(
-                children: [
-                  TextSpan(
-                    text: 'Royal\n',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w300,
-                      letterSpacing: 1,
-                      color: kGoldLight,
-                      height: 1.0,
+            if (_lang == AppLang.he)
+              RichText(
+                textDirection: TextDirection.rtl,
+                text: const TextSpan(
+                  children: [
+                    TextSpan(
+                      text: 'Royal Frame\n',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1,
+                        color: kGold,
+                        height: 1.0,
+                      ),
                     ),
-                  ),
-                  TextSpan(
-                    text: 'Frame',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1,
-                      color: kGold,
-                      height: 1.0,
+                    TextSpan(
+                      text: 'משחק הקלפים המלכותי',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w300,
+                        letterSpacing: 0.5,
+                        color: kGoldLight,
+                        height: 1.2,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+              )
+            else
+              RichText(
+                text: const TextSpan(
+                  children: [
+                    TextSpan(
+                      text: 'Royal\n',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w300,
+                        letterSpacing: 1,
+                        color: kGoldLight,
+                        height: 1.0,
+                      ),
+                    ),
+                    TextSpan(
+                      text: 'Frame',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1,
+                        color: kGold,
+                        height: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
             const Spacer(),
             IconButton(
               tooltip: _lang == AppLang.he ? 'English' : 'עברית',
@@ -192,78 +222,86 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
           ],
         ),
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text('👑', style: TextStyle(fontSize: 60)),
-            const SizedBox(height: 8),
-            const Text(
-              'ROYAL FRAME',
-              style: TextStyle(
-                color: kGold,
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 3,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              _l.welcomeBack(_playerName),
-              style: const TextStyle(color: kGoldLight, fontSize: 18),
-            ),
-            const SizedBox(height: 48),
-
-            if (_activeGame != null) ...[
-              _buildMenuButton(
-                _l.menuResume,
-                Icons.play_arrow,
-                () => _startOrResumeGame(isResume: true),
-                isHighlight: true,
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            _buildMenuButton(
-              _l.menuNewGame,
-              Icons.add_circle_outline,
-              () => _startOrResumeGame(isResume: false),
-            ),
-            const SizedBox(height: 16),
-            _buildMenuButton(
-              _l.menuLeaderboard,
-              Icons.leaderboard,
-              _showLeaderboard,
-            ),
-            const SizedBox(height: 16),
-            _buildMenuButton('Tutorial', Icons.school_outlined, _startTutorial),
-            const SizedBox(height: 16),
-            _buildMenuButton(
-              'Duel Mode',
-              Icons.sports_kabaddi,
-              () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const DuelSetupScreen(),
+      body: Directionality(
+        textDirection:
+            _lang == AppLang.he ? TextDirection.rtl : TextDirection.ltr,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('👑', style: TextStyle(fontSize: 60)),
+              const SizedBox(height: 8),
+              const Text(
+                'ROYAL FRAME',
+                style: TextStyle(
+                  color: kGold,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 3,
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-
-            TextButton.icon(
-              onPressed: () async {
-                await AuthService().signOut();
-                if (!mounted) return;
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (_) => const WelcomeScreen()),
-                );
-              },
-              icon: const Icon(Icons.person, color: kGoldDark),
-              label: Text(
-                _l.menuChangePlayer,
-                style: const TextStyle(color: kGoldDark),
+              const SizedBox(height: 24),
+              Text(
+                _l.welcomeBack(_playerName),
+                style: const TextStyle(color: kGoldLight, fontSize: 18),
               ),
-            ),
-          ],
+              const SizedBox(height: 48),
+
+              if (_activeGame != null) ...[
+                _buildMenuButton(
+                  _l.menuResume,
+                  Icons.play_arrow,
+                  () => _startOrResumeGame(isResume: true),
+                  isHighlight: true,
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              _buildMenuButton(
+                _l.menuNewGame,
+                Icons.add_circle_outline,
+                () => _startOrResumeGame(isResume: false),
+              ),
+              const SizedBox(height: 16),
+              _buildMenuButton(
+                _l.menuLeaderboard,
+                Icons.leaderboard,
+                _showLeaderboard,
+              ),
+              const SizedBox(height: 16),
+              _buildMenuButton(
+                _l.menuTutorial,
+                Icons.school_outlined,
+                _startTutorial,
+              ),
+              const SizedBox(height: 16),
+              _buildMenuButton(
+                _l.menuDuelMode,
+                Icons.sports_kabaddi,
+                () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const DuelSetupScreen(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              TextButton.icon(
+                onPressed: () async {
+                  await AuthService().signOut();
+                  if (!mounted) return;
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+                  );
+                },
+                icon: const Icon(Icons.person, color: kGoldDark),
+                label: Text(
+                  _l.menuChangePlayer,
+                  style: const TextStyle(color: kGoldDark),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
