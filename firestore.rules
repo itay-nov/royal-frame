@@ -10,7 +10,8 @@ service cloud.firestore {
                     && validPlayerCreate();
       allow update: if request.auth != null
                     && request.auth.uid == uid
-                    && validPlayerUpdate();
+                    && validPlayerUpdate()
+                    && notTooSoon();
       allow delete: if false;
     }
 
@@ -32,12 +33,23 @@ service cloud.firestore {
     }
 
     // ── Validation helpers ────────────────────────────────────────────────────
+
     function validDisplayName(name) {
-      return name is string && name.size() >= 1 && name.size() <= 30;
+      return name is string
+          && name.size() >= 1
+          && name.size() <= 30;
     }
 
     function validScore(score) {
-      return score is int && score >= 0 && score <= 500000;
+      return score is int
+          && score >= 0
+          && score <= 500000;
+    }
+
+    // Rate limiting: minimum 30 seconds between score updates.
+    function notTooSoon() {
+      return !('lastUpdated' in resource.data)
+          || request.time > resource.data.lastUpdated + duration.value(30, 's');
     }
 
     function validPlayerCreate() {
@@ -48,21 +60,23 @@ service cloud.firestore {
           && validDisplayName(d.displayName)
           && validScore(d.highScore)
           && validScore(d.totalScore)
-          && d.wins    is int && d.wins    >= 0
-          && d.totalGames is int && d.totalGames >= 0;
+          && d.highScore   == d.totalScore   // first game: highScore == totalScore
+          && d.wins        is int && d.wins        >= 0 && d.wins        <= 1
+          && d.totalGames  is int && d.totalGames  >= 0 && d.totalGames  <= 1;
     }
 
     function validPlayerUpdate() {
-      let d  = request.resource.data;
-      let e  = resource.data;
+      let d = request.resource.data;
+      let e = resource.data;
       return validDisplayName(d.displayName)
           && validScore(d.highScore)
           && validScore(d.totalScore)
-          && d.highScore   >= e.highScore
-          && d.totalScore  >= e.totalScore
-          && d.wins        >= e.wins
-          && d.totalGames  >= e.totalGames
-          && d.uid         == e.uid;
+          && d.highScore   >= e.highScore      // high score never decreases
+          && d.totalScore  >= e.totalScore     // total score never decreases
+          && d.wins        >= e.wins           // win count never decreases
+          && d.totalGames  >= e.totalGames     // game count never decreases
+          && d.totalGames  <= e.totalGames + 1 // max 1 game per update
+          && d.uid         == e.uid;           // uid is immutable
     }
   }
 }
