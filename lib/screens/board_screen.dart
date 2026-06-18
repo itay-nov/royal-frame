@@ -1410,13 +1410,23 @@ class _BoardScreenState extends State<BoardScreen>
   }) {
     return SizedBox(
       width: kDeckStackW,
-      height: kDeckStackH,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Align(alignment: baseAlign, child: base),
-          Positioned(top: 4, right: 2, child: DeckTag(text: tagText)),
+          DeckTag(text: tagText),
+          const SizedBox(height: 4),
+          SizedBox(
+            width: kDeckStackW,
+            height: kDeckStackH,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Align(alignment: baseAlign, child: base),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -1797,7 +1807,7 @@ class _BoardScreenState extends State<BoardScreen>
   @override
   Widget build(BuildContext context) {
     final dragHighlights = _computeDragHighlights();
-    const double deckRowH = 110.0;
+    const double deckRowH = 150.0;
     const double innerGap = 6.0;
 
     final int elapsedSecs = (game.endTime ?? DateTime.now())
@@ -3564,7 +3574,7 @@ class DeckTag extends StatelessWidget {
       ),
       child: Text(
         text,
-        textAlign: TextAlign.right,
+        textAlign: TextAlign.center,
         style: const TextStyle(
           color: kGoldLight,
           fontSize: 9,
