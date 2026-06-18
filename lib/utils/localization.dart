@@ -109,6 +109,8 @@ class L {
   // Welcome Screen Strings
   String get welcomeHint => isHe ? 'הזן את השם שלך' : 'Enter your name';
   String get welcomeBtn => isHe ? 'התחל לשחק' : 'Start Playing';
+  String get welcomeTagline =>
+      isHe ? 'אתגר הקלפים המלכותי' : 'The royal card challenge';
 
   String get dialogHomeTitle => isHe ? 'חזרה לתפריט' : 'Return to Menu';
   String get dialogHomeBody => isHe

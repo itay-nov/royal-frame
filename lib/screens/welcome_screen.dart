@@ -32,10 +32,16 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   AppLang _lang = AppLang.en;
   L get _l => L(_lang);
 
+  // Title entrance animation
+  bool _visible = false;
+
   @override
   void initState() {
     super.initState();
     _loadSavedLang();
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (mounted) setState(() => _visible = true);
+    });
   }
 
   Future<void> _loadSavedLang() async {
@@ -376,21 +382,68 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       backgroundColor: kBurgundy,
       body: Stack(
         children: [
+          // ── Subtle radial glow decoration ──────────────────────────────────
+          Positioned(
+            top: -80,
+            left: -60,
+            child: _glowCircle(340),
+          ),
+          Positioned(
+            bottom: -100,
+            right: -80,
+            child: _glowCircle(380),
+          ),
+
           Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text('👑', style: TextStyle(fontSize: 80)),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'ROYAL FRAME',
-                    style: TextStyle(
-                      color: kGold,
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 4,
+                  // ── Animated title block ─────────────────────────────────
+                  AnimatedOpacity(
+                    opacity: _visible ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 600),
+                    child: AnimatedSlide(
+                      offset: _visible ? Offset.zero : const Offset(0, -0.15),
+                      duration: const Duration(milliseconds: 600),
+                      curve: Curves.easeOut,
+                      child: Column(
+                        children: [
+                          const Text('👑', style: TextStyle(fontSize: 80)),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'ROYAL FRAME',
+                            style: TextStyle(
+                              color: kGold,
+                              fontSize: 32,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 4,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          // ── Card suit symbols ──────────────────────────
+                          const Text(
+                            '♠  ♥  ♦  ♣',
+                            style: TextStyle(
+                              color: kGold,
+                              fontSize: 18,
+                              letterSpacing: 6,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          // ── Tagline ────────────────────────────────────
+                          Text(
+                            _l.welcomeTagline,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: kGoldDark,
+                              letterSpacing: 1.5,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
 
@@ -435,6 +488,17 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             child: _buildLangToggle(),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _glowCircle(double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: kGold.withOpacity(0.04),
       ),
     );
   }
