@@ -119,6 +119,11 @@ class _BoardScreenState extends State<BoardScreen>
   // Prevents duplicate stats/goal updates when overlay rebuilds.
   bool _statsUpdatedThisGame = false;
 
+  // Optional-clearing setting
+  static const String _optionalClearingPrefKey = 'royalFrameOptionalClearing';
+  bool _optionalClearing = false;
+  bool _clearedAtLeastOnePairThisPhase = false;
+
   // Audio
   static const String _mutePrefKey = 'royalFrameMuted';
   bool _isMuted = false;
@@ -271,6 +276,7 @@ class _BoardScreenState extends State<BoardScreen>
     if (!mounted) return;
     setState(() {
       _isMuted = prefs.getBool(_mutePrefKey) ?? false;
+      _optionalClearing = prefs.getBool(_optionalClearingPrefKey) ?? false;
     });
   }
 
@@ -294,6 +300,13 @@ class _BoardScreenState extends State<BoardScreen>
   Future<void> _toggleHaptic() async {
     await HapticService.setEnabled(!HapticService.isEnabled);
     if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleOptionalClearing() async {
+    final prefs = await SharedPreferences.getInstance();
+    final newValue = !_optionalClearing;
+    await prefs.setBool(_optionalClearingPrefKey, newValue);
+    setState(() => _optionalClearing = newValue);
   }
 
   void _startUITimer() {
@@ -637,6 +650,7 @@ class _BoardScreenState extends State<BoardScreen>
       _errorHighlights.clear();
       _xpAwardedThisGame = false;
       _statsUpdatedThisGame = false;
+      _clearedAtLeastOnePairThisPhase = false;
     });
     _restartHintTimer();
     _startUITimer();
@@ -748,6 +762,7 @@ class _BoardScreenState extends State<BoardScreen>
     final isFillToClear = previous == Phase.fill && current == Phase.clear;
     final isClearToFill = previous == Phase.clear && current == Phase.fill;
     if (!isFillToClear && !isClearToFill) return;
+    if (isFillToClear) _clearedAtLeastOnePairThisPhase = false;
     _triggerPhaseTransitionFeedback(isFillToClear: isFillToClear);
   }
 
@@ -902,6 +917,7 @@ class _BoardScreenState extends State<BoardScreen>
       setState(() {
         game.performClear();
         _isAnimatingClear = false;
+        _clearedAtLeastOnePairThisPhase = true;
       });
       DailyGoalService.addProgress(GoalType.clearPair, 1);
       HapticService.success();
@@ -2048,6 +2064,8 @@ class _BoardScreenState extends State<BoardScreen>
                             _toggleMute();
                           else if (value == 'haptic')
                             _toggleHaptic();
+                          else if (value == 'optional_clearing')
+                            _toggleOptionalClearing();
                           else if (value == 'debug')
                             setState(() =>
                                 _showDebugTools = !_showDebugTools);
@@ -2133,6 +2151,30 @@ class _BoardScreenState extends State<BoardScreen>
                             ]),
                           ),
                           PopupMenuItem(
+                            value: 'optional_clearing',
+                            child: Row(children: [
+                              Icon(
+                                _optionalClearing
+                                    ? Icons.skip_next
+                                    : Icons.skip_next_outlined,
+                                color: kGold,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                _optionalClearing
+                                    ? (_lang == AppLang.he
+                                        ? 'פינוי חופשי: פועל'
+                                        : 'Free Clearing: On')
+                                    : (_lang == AppLang.he
+                                        ? 'פינוי חופשי: כבוי'
+                                        : 'Free Clearing: Off'),
+                                style: const TextStyle(
+                                    color: kGoldLight, fontSize: 14),
+                              ),
+                            ]),
+                          ),
+                          PopupMenuItem(
                             value: 'debug',
                             child: Row(children: [
                               Icon(
@@ -2194,8 +2236,10 @@ class _BoardScreenState extends State<BoardScreen>
                           ),
                         ),
 
-                      if (game.phase == Phase.clear &&
+                      if (_optionalClearing &&
+                          game.phase == Phase.clear &&
                           game.hasAnyPairFor11 &&
+                          _clearedAtLeastOnePairThisPhase &&
                           !_isAnimatingClear &&
                           !_showClearTutorial)
                         Container(
