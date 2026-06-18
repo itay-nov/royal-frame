@@ -29,6 +29,7 @@ class BoardScreen extends StatefulWidget {
   // Duel mode — set by DuelSetupScreen when a match is found.
   final DuelSession? duelSession;
   final bool isHost;
+  final AppLang? initialLang;
 
   const BoardScreen({
     super.key,
@@ -37,6 +38,7 @@ class BoardScreen extends StatefulWidget {
     this.showNewGamePicker = false,
     this.duelSession,
     this.isHost = false,
+    this.initialLang,
   });
 
   @override
@@ -101,7 +103,7 @@ class _BoardScreenState extends State<BoardScreen>
 
   CardModel? _draggingCard;
 
-  AppLang _lang = AppLang.en;
+  late AppLang _lang;
   L get _l => L(_lang);
 
   bool _showGameOverOverlay = false;
@@ -147,6 +149,7 @@ class _BoardScreenState extends State<BoardScreen>
   @override
   void initState() {
     super.initState();
+    _lang = widget.initialLang ?? AppLang.en;
     WidgetsBinding.instance.addObserver(this);
     _cellKeys = List.generate(16, (_) => GlobalKey());
     _confettiCtrl = ConfettiController(duration: const Duration(seconds: 6));
@@ -230,6 +233,7 @@ class _BoardScreenState extends State<BoardScreen>
   }
 
   Future<void> _loadSavedLang() async {
+    if (widget.initialLang != null) return;
     final lang = await L.loadLang();
     if (!mounted) return;
     setState(() => _lang = lang);

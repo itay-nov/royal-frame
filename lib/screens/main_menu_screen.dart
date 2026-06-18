@@ -11,6 +11,7 @@ import 'welcome_screen.dart';
 import '../services/db_service.dart';
 import '../services/auth_service.dart';
 import '../services/haptic_service.dart';
+import '../services/streak_service.dart';
 import '../models/player_model.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,6 +40,28 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     _loadMuteState();
     _loadSavedLang();
     HapticService.load();
+    _loadStreak();
+  }
+
+  Future<void> _loadStreak() async {
+    await StreakService.load();
+    if (!mounted) return;
+    setState(() {});
+    if (StreakService.justExtended && StreakService.streak > 1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showStreakDialog());
+    }
+  }
+
+  void _showStreakDialog() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => _StreakDialog(
+        streak: StreakService.streak,
+        lang: _lang,
+      ),
+    );
   }
 
   Future<void> _loadSavedLang() async {
@@ -245,7 +268,9 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                 _l.welcomeBack(_playerName),
                 style: const TextStyle(color: kGoldLight, fontSize: 18),
               ),
-              const SizedBox(height: 48),
+              const SizedBox(height: 16),
+              _StreakBadge(streak: StreakService.streak, lang: _lang),
+              const SizedBox(height: 32),
 
               if (_activeGame != null) ...[
                 _buildMenuButton(
@@ -332,6 +357,98 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         label: Text(
           text,
           style: const TextStyle(fontSize: 16, letterSpacing: 1),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STREAK BADGE  (shown inline in the menu)
+// ─────────────────────────────────────────────────────────────────────────────
+class _StreakBadge extends StatelessWidget {
+  final int streak;
+  final AppLang lang;
+  const _StreakBadge({required this.streak, required this.lang});
+
+  @override
+  Widget build(BuildContext context) {
+    if (streak <= 0) return const SizedBox.shrink();
+    final isHe = lang == AppLang.he;
+    final label = isHe ? 'יום $streak ברצף 🔥' : '🔥 $streak-day streak';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+      decoration: BoxDecoration(
+        color: kBurgundyLight,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: kGold.withOpacity(0.7), width: 1.5),
+        boxShadow: [BoxShadow(color: kGold.withOpacity(0.15), blurRadius: 10)],
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: kGold,
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STREAK DIALOG  (shown on new-day login)
+// ─────────────────────────────────────────────────────────────────────────────
+class _StreakDialog extends StatelessWidget {
+  final int streak;
+  final AppLang lang;
+  const _StreakDialog({required this.streak, required this.lang});
+
+  @override
+  Widget build(BuildContext context) {
+    final isHe = lang == AppLang.he;
+    final title = isHe ? 'רצף יומי! 🔥' : 'Daily Streak! 🔥';
+    final body  = isHe
+        ? 'כל הכבוד! $streak ימים ברצף.\nהמשך לשחק כדי לא לאבד את הרצף!'
+        : 'Amazing! $streak days in a row.\nKeep playing to protect your streak!';
+    final btn   = isHe ? 'יאללה!' : "Let's go!";
+
+    return Dialog(
+      backgroundColor: kBurgundyLight,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('🔥', style: const TextStyle(fontSize: 52)),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: kGold,
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              body,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: kGoldLight,
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(btn),
+            ),
+          ],
         ),
       ),
     );
