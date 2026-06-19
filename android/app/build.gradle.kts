@@ -23,7 +23,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.itay.royalframe"
+        applicationId = "com.itay.royalframegame"
         minSdk = flutter.minSdkVersion
         targetSdk = 35
         versionCode = flutter.versionCode
