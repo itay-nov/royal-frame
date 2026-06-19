@@ -1,4 +1,4 @@
-package com.example.royal_frame_mvp
+package com.itay.royalframegame
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -22,6 +22,58 @@
           }
         },
         {
+          "client_id": "961421919288-dq9bap9kp8hqeu8ojlaehm18lhvftllv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.itay.royalframe",
+            "certificate_hash": "9900c1063173532a7b91a39903c0d4d5040b93ed"
+          }
+        },
+        {
+          "client_id": "961421919288-1oqcid53ipgtshukmvkp90cu2g1i21g2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAoqtGMVwhL1-eFA9pJOiymlc94BXBv2So"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "961421919288-1oqcid53ipgtshukmvkp90cu2g1i21g2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "961421919288-l4kntkarcha1nsuq1tseso0m9ah2jt7p.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.royalFrameMvp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:961421919288:android:3ebcdd4370067e35fd12cd",
+        "android_client_info": {
+          "package_name": "com.itay.royalframegame"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "961421919288-3bhd1fq7b9s7n3ccoo1aov8pltsc068r.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.itay.royalframegame",
+            "certificate_hash": "9900c1063173532a7b91a39903c0d4d5040b93ed"
+          }
+        },
+        {
           "client_id": "961421919288-1oqcid53ipgtshukmvkp90cu2g1i21g2.apps.googleusercontent.com",
           "client_type": 3
         }

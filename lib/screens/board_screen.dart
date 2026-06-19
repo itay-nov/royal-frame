@@ -1936,9 +1936,6 @@ class _BoardScreenState extends State<BoardScreen>
                             _toggleMute();
                           else if (value == 'haptic')
                             _toggleHaptic();
-                          else if (value == 'debug')
-                            setState(() =>
-                                _showDebugTools = !_showDebugTools);
                         },
                         itemBuilder: (context) => [
                           PopupMenuItem(
@@ -2020,24 +2017,6 @@ class _BoardScreenState extends State<BoardScreen>
                                       color: kGoldLight, fontSize: 14)),
                             ]),
                           ),
-                          PopupMenuItem(
-                            value: 'debug',
-                            child: Row(children: [
-                              Icon(
-                                  _showDebugTools
-                                      ? Icons.settings
-                                      : Icons.settings_outlined,
-                                  color: kGold,
-                                  size: 20),
-                              const SizedBox(width: 12),
-                              Text(
-                                  _showDebugTools
-                                      ? _l.menuDebugHide
-                                      : _l.menuDebugShow,
-                                  style: const TextStyle(
-                                      color: kGoldLight, fontSize: 14)),
-                            ]),
-                          ),
                         ],
                       ),
                     ),
@@ -2080,14 +2059,6 @@ class _BoardScreenState extends State<BoardScreen>
                             ],
                           ),
                         ),
-
-                      AnimatedSize(
-                        duration: const Duration(milliseconds: 220),
-                        curve: Curves.easeInOut,
-                        child: _showDebugTools
-                            ? _buildDebugPanel()
-                            : const SizedBox.shrink(),
-                      ),
 
                       Expanded(
                         child: Padding(

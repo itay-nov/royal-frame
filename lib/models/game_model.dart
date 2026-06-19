@@ -339,6 +339,12 @@ class GameState {
 
     if (phase == Phase.fill && current != null) {
       if (_cardHasLegalPlacement(current!)) return;
+      // Frame is full — victory takes priority over a blocked card.
+      if (royalsPlacedCorrect == totalRoyalSlots) {
+        phase = Phase.winner;
+        endTime ??= DateTime.now();
+        return;
+      }
       phase = Phase.gameOver;
       endTime ??= DateTime.now();
       return;

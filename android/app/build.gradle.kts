@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.royal_frame_mvp"
+    namespace = "com.itay.royalframegame"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -23,21 +23,23 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.itay.royalframe"
+        applicationId = "com.itay.royalframegame"
         minSdk = flutter.minSdkVersion
         targetSdk = 35
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        versionCode = 3
+        versionName = "1.0.2"
     }
 
 
     buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
-        }
+    getByName("release") {
+        // וודא שאלו הערכים:
+        isMinifyEnabled = true  // זה ה-Code shrinking שחסר
+        isShrinkResources = true // זה מה שגרם לשגיאה
+        
+        // ... שאר ההגדרות שלך
     }
+}
 }
 
 flutter {
