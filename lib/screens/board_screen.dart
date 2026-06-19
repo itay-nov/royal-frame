@@ -617,6 +617,7 @@ class _BoardScreenState extends State<BoardScreen>
       barrierDismissible: true,
       builder: (_) => _DifficultyPickerDialog(
         current: _difficulty,
+        lang: _lang,
         onSelected: (diff) {
           Navigator.pop(context);
           _executeNewGame(diff);
@@ -3058,10 +3059,12 @@ class _BoardScreenState extends State<BoardScreen>
 class _DifficultyPickerDialog extends StatefulWidget {
   final GameDifficulty current;
   final void Function(GameDifficulty) onSelected;
+  final AppLang lang;
 
   const _DifficultyPickerDialog({
     required this.current,
     required this.onSelected,
+    required this.lang,
   });
 
   @override
@@ -3079,32 +3082,35 @@ class _DifficultyPickerDialogState
     _selected = widget.current;
   }
 
-  static const _data = [
-    (
-      diff: GameDifficulty.medium,
-      emoji: '☀️',
-      name: 'Medium',
-      subtitle: 'No Kings — 8 dump slots.\nScore ×0.5',
-      accentLight: Color(0xFF4CAF50),
-      accentDark: Color(0xFF2E7D32),
-    ),
-    (
-      diff: GameDifficulty.hard,
-      emoji: '⚔️',
-      name: 'Hard',
-      subtitle: 'Standard rules.\nScore ×1.0',
-      accentLight: Color(0xFFD4AF37),
-      accentDark: Color(0xFF9A7B1A),
-    ),
-    (
-      diff: GameDifficulty.extreme,
-      emoji: '💣',
-      name: 'Extreme',
-      subtitle: '3-min bomb + Sudden Death.\nScore ×2.0',
-      accentLight: Color(0xFFFF5252),
-      accentDark: Color(0xFFB71C1C),
-    ),
-  ];
+  List<({GameDifficulty diff, String emoji, String name, String subtitle, Color accentLight, Color accentDark})> get _data {
+    final isHe = widget.lang == AppLang.he;
+    return [
+      (
+        diff: GameDifficulty.medium,
+        emoji: '☀️',
+        name: isHe ? 'בינוני' : 'Medium',
+        subtitle: isHe ? 'ללא מלכים — 8 תאי זבל.\nניקוד ×0.5' : 'No Kings — 8 dump slots.\nScore ×0.5',
+        accentLight: const Color(0xFF4CAF50),
+        accentDark: const Color(0xFF2E7D32),
+      ),
+      (
+        diff: GameDifficulty.hard,
+        emoji: '⚔️',
+        name: isHe ? 'קשה' : 'Hard',
+        subtitle: isHe ? 'חוקים רגילים.\nניקוד ×1.0' : 'Standard rules.\nScore ×1.0',
+        accentLight: const Color(0xFFD4AF37),
+        accentDark: const Color(0xFF9A7B1A),
+      ),
+      (
+        diff: GameDifficulty.extreme,
+        emoji: '💣',
+        name: isHe ? 'קיצוני' : 'Extreme',
+        subtitle: isHe ? 'פצצה 3 דקות + מוות פתאומי.\nניקוד ×2.0' : '3-min bomb + Sudden Death.\nScore ×2.0',
+        accentLight: const Color(0xFFFF5252),
+        accentDark: const Color(0xFFB71C1C),
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3143,10 +3149,10 @@ class _DifficultyPickerDialogState
                 children: [
                   const Icon(Icons.tune, color: kGold, size: 22),
                   const SizedBox(width: 10),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Choose Difficulty',
-                      style: TextStyle(
+                      widget.lang == AppLang.he ? 'בחר רמת קושי' : 'Choose Difficulty',
+                      style: const TextStyle(
                         color: kGold,
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
@@ -3290,7 +3296,7 @@ class _DifficultyPickerDialogState
                       widget.onSelected(_selected),
                   icon: const Icon(Icons.play_arrow_rounded,
                       size: 22),
-                  label: const Text('START GAME'),
+                  label: Text(widget.lang == AppLang.he ? 'התחל משחק' : 'START GAME'),
                 ),
               ),
             ),
