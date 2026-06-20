@@ -1,6 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'streak_service.dart';
+import 'tutorial_manager.dart';
+import 'daily_goal_service.dart';
+import 'xp_service.dart';
+import 'badge_service.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -153,5 +159,21 @@ class AuthService {
     } catch (_) {
       // ignore
     }
+    await clearLocalUserData();
+  }
+
+  /// Wipes all user-specific local state so the next login starts clean.
+  /// Called automatically on sign-out; can also be called explicitly.
+  static Future<void> clearLocalUserData() async {
+    // SharedPreferences: player name + tutorial flag
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('playerName');
+    await TutorialManager.reset();   // clears royalFrameTutorialV3Done
+
+    // SecureStorage: game progress
+    await StreakService.reset();
+    await DailyGoalService.reset();
+    await XpService.reset();
+    await BadgeService.reset();
   }
 }

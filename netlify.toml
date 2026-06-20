@@ -1,0 +1,130 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Royal Frame — Netlify deployment config
+# ─────────────────────────────────────────────────────────────────────────────
+
+[build]
+  command   = "flutter build web --release --dart-define=FLUTTER_WEB_USE_SKIA=true"
+  publish   = "build/web"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Default headers — applied to every response unless overridden below
+# ─────────────────────────────────────────────────────────────────────────────
+[[headers]]
+  for = "/*"
+
+  [headers.values]
+    # Prevent embedding in any iframe (clickjacking)
+    X-Frame-Options = "DENY"
+
+    # Stop browsers guessing MIME types (MIME-sniffing attacks)
+    X-Content-Type-Options = "nosniff"
+
+    # Disable cross-origin resource leakage
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+    # Restrict browser features to what the app actually needs
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+
+    # ── Content Security Policy ───────────────────────────────────────────────
+    # 'self'            → our own origin (HTML, JS, Dart compiled code)
+    # *.googleapis.com  → Firebase Auth REST + Identity Toolkit
+    # *.firebaseio.com  → Realtime Database (fallback; Firestore uses gRPC)
+    # *.firebaseapp.com → Firebase Hosting SDK helper (Auth redirect)
+    # *.google.com      → reCAPTCHA v3 (App Check)
+    # *.gstatic.com     → reCAPTCHA badge assets + Google Fonts
+    # accounts.google.com → Google Sign-In OAuth flow
+    # *.googleapis.com  → Firestore gRPC-Web endpoint
+    # unpkg.com         → CanvasKit WASM (Flutter Web renderer, if CDN-loaded)
+    #
+    # style-src 'unsafe-inline' is required by Flutter Web's inline <style> tags.
+    # No eval() anywhere — 'unsafe-eval' is intentionally omitted.
+    Content-Security-Policy = """
+      default-src 'self';
+      script-src 'self'
+                 https://*.googleapis.com
+                 https://*.gstatic.com
+                 https://www.google.com
+                 https://www.gstatic.com
+                 https://apis.google.com
+                 https://accounts.google.com
+                 https://unpkg.com;
+      style-src  'self' 'unsafe-inline'
+                 https://fonts.googleapis.com;
+      font-src   'self'
+                 https://fonts.gstatic.com;
+      img-src    'self' data: blob:
+                 https://*.googleapis.com
+                 https://*.gstatic.com
+                 https://www.google.com;
+      connect-src 'self'
+                 https://*.googleapis.com
+                 https://*.firebaseio.com
+                 https://*.firebaseapp.com
+                 https://identitytoolkit.googleapis.com
+                 https://securetoken.googleapis.com
+                 https://firestore.googleapis.com
+                 https://www.google.com
+                 https://accounts.google.com
+                 wss://*.firebaseio.com;
+      frame-src  https://accounts.google.com
+                 https://*.firebaseapp.com
+                 https://www.google.com;
+      object-src 'none';
+      base-uri   'self';
+      form-action 'self';
+    """
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Flutter service worker — must revalidate on every load so updates land
+# ─────────────────────────────────────────────────────────────────────────────
+[[headers]]
+  for = "/flutter_service_worker.js"
+
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Pragma        = "no-cache"
+    Expires       = "0"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Flutter version manifest — same story: never cache
+# ─────────────────────────────────────────────────────────────────────────────
+[[headers]]
+  for = "/version.json"
+
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CanvasKit WASM + JS — large, content-addressed files; cache aggressively
+# ─────────────────────────────────────────────────────────────────────────────
+[[headers]]
+  for = "/canvaskit/*"
+
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Compiled Dart JS bundle — content-hashed filename; safe to cache forever
+# ─────────────────────────────────────────────────────────────────────────────
+[[headers]]
+  for = "/main.dart.js"
+
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Static assets (images, audio, fonts) — cache one week, allow revalidation
+# ─────────────────────────────────────────────────────────────────────────────
+[[headers]]
+  for = "/assets/*"
+
+  [headers.values]
+    Cache-Control = "public, max-age=604800, stale-while-revalidate=86400"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SPA redirect — send all unknown paths to index.html so Flutter router works
+# ─────────────────────────────────────────────────────────────────────────────
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

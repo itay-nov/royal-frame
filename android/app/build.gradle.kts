@@ -26,20 +26,21 @@ android {
         applicationId = "com.itay.royalframegame"
         minSdk = flutter.minSdkVersion
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.0.2"
+        // versionCode and versionName are injected by the Flutter Gradle plugin
+        // from pubspec.yaml (version: 1.0.3+4 → versionName=1.0.3, versionCode=4).
+        // Do NOT hardcode them here.
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
-
 
     buildTypes {
-    getByName("release") {
-        // וודא שאלו הערכים:
-        isMinifyEnabled = true  // זה ה-Code shrinking שחסר
-        isShrinkResources = true // זה מה שגרם לשגיאה
-        
-        // ... שאר ההגדרות שלך
+        getByName("release") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            // Uses Flutter's default debug signing for now.
+            // Replace with a proper keystore config before publishing to Play Store.
+        }
     }
-}
 }
 
 flutter {

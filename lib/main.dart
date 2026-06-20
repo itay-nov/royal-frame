@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -15,8 +16,15 @@ void main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   await FirebaseAppCheck.instance.activate(
-    androidProvider: AndroidProvider.playIntegrity,
-    appleProvider: AppleProvider.appAttest,
+    // Android/iOS: Play Integrity / App Attest in release; debug provider in debug.
+    androidProvider: kReleaseMode ? AndroidProvider.playIntegrity : AndroidProvider.debug,
+    appleProvider:   kReleaseMode ? AppleProvider.appAttest       : AppleProvider.debug,
+    // Web: always pass the reCAPTCHA provider.
+    // In debug/dev the JS global `self.FIREBASE_APPCHECK_DEBUG_TOKEN = true`
+    // (set in web/index.html for localhost) intercepts the request before it
+    // reaches reCAPTCHA, so no real token exchange happens and no 403 is thrown.
+    // The SDK prints the debug UUID to the DevTools console automatically.
+    // Register that UUID in: Firebase Console → App Check → Manage debug tokens.
     webProvider: ReCaptchaV3Provider('6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI'),
   );
 

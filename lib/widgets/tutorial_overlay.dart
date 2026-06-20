@@ -2,21 +2,23 @@ import 'package:flutter/material.dart';
 import '../theme_constants.dart';
 import '../utils/localization.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Spotlight painter — blacks out everything except the listed rects.
+// ─────────────────────────────────────────────────────────────────────────────
 class OverlayHolePainter extends CustomPainter {
   final List<Rect> holes;
-  OverlayHolePainter(this.holes);
+  const OverlayHolePainter(this.holes);
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.saveLayer(Offset.zero & size, Paint());
-    canvas.drawColor(Colors.black.withOpacity(0.85), BlendMode.srcOver);
-
-    final holePaint = Paint()..blendMode = BlendMode.clear;
-    for (final rect in holes) {
-      if (rect.width > 0 && rect.height > 0) {
+    canvas.drawColor(Colors.black.withOpacity(0.82), BlendMode.srcOver);
+    final clear = Paint()..blendMode = BlendMode.clear;
+    for (final r in holes) {
+      if (r.width > 0 && r.height > 0) {
         canvas.drawRRect(
-          RRect.fromRectAndRadius(rect.inflate(4), const Radius.circular(8)),
-          holePaint,
+          RRect.fromRectAndRadius(r.inflate(5), const Radius.circular(9)),
+          clear,
         );
       }
     }
@@ -24,16 +26,18 @@ class OverlayHolePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(OverlayHolePainter oldDelegate) => true;
+  bool shouldRepaint(OverlayHolePainter old) => old.holes != holes;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase A — Blocking welcome modals with per-step spotlights.
+// ─────────────────────────────────────────────────────────────────────────────
 class TutorialOverlay extends StatefulWidget {
   final void Function({bool skipped}) onFinish;
   final AppLang lang;
   final GlobalKey deckRowKey;
   final GlobalKey gridKey;
   final List<GlobalKey> cellKeys;
-  final bool isClearPhase;
 
   const TutorialOverlay({
     super.key,
@@ -42,260 +46,264 @@ class TutorialOverlay extends StatefulWidget {
     required this.deckRowKey,
     required this.gridKey,
     required this.cellKeys,
-    this.isClearPhase = false,
   });
 
   @override
   State<TutorialOverlay> createState() => _TutorialOverlayState();
 }
 
-class _TutorialOverlayState extends State<TutorialOverlay> {
+class _TutorialOverlayState extends State<TutorialOverlay>
+    with SingleTickerProviderStateMixin {
   int _step = 0;
   List<Rect> _holes = [];
+  late final AnimationController _fadeCtrl;
+
+  // ── Texts ──────────────────────────────────────────────────────────────────
+
+  static const _stepsEn = [
+    'Welcome to Royal Frame! This is your deck. Draw cards to fill the board.',
+    'Royals (J, Q, K) must go in the outer frame. Try to complete all 12!',
+    'Number cards go anywhere. The inner 4 slots are a great dump for numbers so you don\'t block Royals.',
+    'Now try to fill the board with cards! (You cannot place a card on an occupied slot.) Once the table is full, you will clear pairs that sum exactly 11.',
+  ];
+
+  static const _stepsHe = [
+    'ברוכים הבאים ל-Royal Frame! זו החפיסה שלך. משוך קלפים כדי למלא את הלוח.',
+    'קלפי מלוכה (J, Q, K) חייבים להיות במסגרת החיצונית. כדי לנצח עליך להשלים את כל ה12!',
+    'קלפי מספרים יכולים להיות בכל מקום. 4 המשבצות הפנימיות הן מקום מצוין לאחסן מספרים כדי לא לחסום מלוכה.',
+    'כעת מלא את הלוח! (לא ניתן להניח קלף על משבצת תפוסה.) לאחר שהשולחן מלא, תפנה זוגות שסכומם 11 בדיוק.',
+  ];
+
+  List<String> get _steps =>
+      widget.lang == AppLang.he ? _stepsHe : _stepsEn;
+  bool get _isLast => _step == _steps.length - 1;
+
+  // ── Spotlight geometry ─────────────────────────────────────────────────────
+
+  // Step 0 → deck row only
+  // Step 1 → outer 12 grid slots
+  // Step 2 → inner 4 grid slots
+  // Step 3 → entire grid
+  static const _outerIndices = [0, 1, 2, 3, 4, 7, 8, 11, 12, 13, 14, 15];
+  static const _innerIndices = [5, 6, 9, 10];
+
+  // Modal position per step: avoid covering the spotlight.
+  // Deck row is in the upper-middle area; grid is below it.
+  static const _alignments = [
+    Alignment.topCenter,    // step 0: deck row lit → modal just below deck
+    Alignment.topCenter,    // step 1: outer grid lit → modal at top
+    Alignment.topCenter,    // step 2: inner grid lit → modal at top
+    Alignment.bottomCenter, // step 3: full grid lit → modal at bottom
+  ];
+
+  // Step 0: 158 px top margin clears the 150 px deck row + small gap.
+  static const _margins = [
+    EdgeInsets.fromLTRB(20, 158, 20, 0),  // step 0: sit right below deck row
+    EdgeInsets.fromLTRB(20, 28, 20, 0),   // step 1
+    EdgeInsets.fromLTRB(20, 28, 20, 0),   // step 2
+    EdgeInsets.fromLTRB(20, 0, 20, 28),   // step 3
+  ];
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
+    _fadeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 260),
+    )..forward();
     WidgetsBinding.instance.addPostFrameCallback((_) => _updateHoles());
+  }
+
+  @override
+  void dispose() {
+    _fadeCtrl.dispose();
+    super.dispose();
   }
 
   Rect _getRect(GlobalKey k) {
     final box = k.currentContext?.findRenderObject() as RenderBox?;
-    final overlayBox = context.findRenderObject() as RenderBox?;
-    if (box == null || overlayBox == null) return Rect.zero;
-    final pos = box.localToGlobal(Offset.zero, ancestor: overlayBox);
+    final overlay = context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null) return Rect.zero;
+    final pos = box.localToGlobal(Offset.zero, ancestor: overlay);
     return pos & box.size;
   }
 
   void _updateHoles() {
     if (!mounted) return;
-    if (widget.isClearPhase) {
-      _holes = [_getRect(widget.gridKey)];
-    } else {
-      if (_step == 0) {
-        _holes = [_getRect(widget.deckRowKey)];
-      } else if (_step == 1) {
-        _holes = [
-          0,
-          1,
-          2,
-          3,
-          4,
-          7,
-          8,
-          11,
-          12,
-          13,
-          14,
-          15,
-        ].map((i) => _getRect(widget.cellKeys[i])).toList();
-      } else if (_step == 2) {
-        _holes = [
-          5,
-          6,
-          9,
-          10,
-        ].map((i) => _getRect(widget.cellKeys[i])).toList();
-      } else if (_step == 3) {
-        _holes = [_getRect(widget.gridKey)];
-      }
+    List<Rect> next;
+    switch (_step) {
+      case 0:
+        next = [_getRect(widget.deckRowKey)];
+      case 1:
+        next = _outerIndices
+            .map((i) => _getRect(widget.cellKeys[i]))
+            .toList();
+      case 2:
+        next = _innerIndices
+            .map((i) => _getRect(widget.cellKeys[i]))
+            .toList();
+      default:
+        next = [_getRect(widget.gridKey)];
     }
-    _holes.removeWhere((r) => r.width == 0);
-    setState(() {});
+    next.removeWhere((r) => r.width == 0);
+    setState(() => _holes = next);
   }
 
-  void _nextStep() {
-    if (widget.isClearPhase || _step == 3) {
-      widget.onFinish(skipped: false);
-    } else {
-      setState(() => _step++);
+  void _goTo(int step) {
+    _fadeCtrl.reverse().then((_) {
+      if (!mounted) return;
+      setState(() => _step = step);
+      _fadeCtrl.forward();
       WidgetsBinding.instance.addPostFrameCallback((_) => _updateHoles());
-    }
+    });
   }
 
-  void _prevStep() {
-    if (_step > 0) {
-      setState(() => _step--);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _updateHoles());
-    }
-  }
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final isHe = widget.lang == AppLang.he;
-
-    final texts = widget.isClearPhase
-        ? (isHe
-              ? [
-                  '🧹 שלב הפינוי! הקש על שני קלפי מספרים שסכומם 11 כדי להסיר אותם. פנה כמה שיותר לפני המילוי מחדש!',
-                ]
-              : [
-                  '🧹 Clear Phase! Tap two number cards that add up to 11 to remove them. Clear as many as you can before refilling!',
-                ])
-        : (isHe
-              ? [
-                  'הקש על החפיסה כדי למשוך קלף, ואז הקש על משבצת ריקה כדי להניח אותו. מלא את כל הלוח!',
-                  '👑 קלפי מלוכה (J, Q, K) שייכים אך ורק ב-12 המשבצות החיצוניות. שמור על המסגרת מלכותית!',
-                  '4 המשבצות המרכזיות הן "אזור ההשלכה" שלך — חנה כאן קלפי מספרים כדי שלא יחסמו את קלפי המלוכה.',
-                  'מלא כל משבצת כדי להשלים את הלוח — ואז יתחיל שלב הפינוי!',
-                ]
-              : [
-                  'Tap the deck to draw a card, then tap an empty slot to place it. Fill the whole board!',
-                  '👑 Royals (J, Q, K) ONLY belong in the outer 12 slots. Keep the frame royal!',
-                  'The 4 center slots are your "dump zone" — park number cards here so they don\'t block Royals.',
-                  'Fill every slot to complete the board — then the Clear Phase begins!',
-                ]);
-
-    final alignments = widget.isClearPhase
-        ? [Alignment.bottomCenter]
-        : [
-            Alignment.center,
-            Alignment.center,
-            Alignment.bottomCenter,
-            Alignment.bottomCenter,
-          ];
-
-    final margins = widget.isClearPhase
-        ? [const EdgeInsets.only(bottom: 60)]
-        : [
-            const EdgeInsets.only(top: 80),
-            const EdgeInsets.all(0),
-            const EdgeInsets.only(bottom: 60),
-            const EdgeInsets.only(bottom: 60),
-          ];
 
     return Material(
       color: Colors.transparent,
       child: CustomPaint(
         painter: OverlayHolePainter(_holes),
         child: SafeArea(
-          child: Stack(
-            children: [
-              AnimatedAlign(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-                alignment: alignments[_step],
-                child: Padding(
-                  padding:
-                      margins[_step] +
-                      const EdgeInsets.symmetric(horizontal: 24),
-                  child: Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: kBurgundyLight,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: kGold, width: 2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: kGold.withOpacity(0.3),
-                          blurRadius: 20,
-                        ),
-                      ],
+          child: AnimatedAlign(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeInOut,
+            alignment: _alignments[_step],
+            child: Padding(
+              padding: _margins[_step],
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 460),
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                decoration: BoxDecoration(
+                  color: kBurgundyLight,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: kGold, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: kGold.withOpacity(0.28),
+                      blurRadius: 28,
+                      spreadRadius: 1,
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (!widget.isClearPhase)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Text(
-                              isHe
-                                  ? 'שלב ${_step + 1} / 4'
-                                  : 'Step ${_step + 1} / 4',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: kGold,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1.2,
-                              ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Step counter
+                    Text(
+                      isHe
+                          ? 'שלב ${_step + 1} / ${_steps.length}'
+                          : 'Step ${_step + 1} / ${_steps.length}',
+                      style: const TextStyle(
+                        color: kGold,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Step text
+                    FadeTransition(
+                      opacity: _fadeCtrl,
+                      child: Text(
+                        _steps[_step],
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: kGoldLight,
+                          fontSize: 15,
+                          height: 1.6,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Dot indicators
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(_steps.length, (i) {
+                        final active = i == _step;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          width: active ? 10 : 7,
+                          height: active ? 10 : 7,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: active ? kGold : Colors.transparent,
+                            border: Border.all(
+                              color: active ? kGold : kGoldDark,
+                              width: 1.5,
                             ),
                           ),
-                        Text(
-                          texts[_step],
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: kGoldLight,
-                            fontSize: 15,
-                            height: 1.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        if (!widget.isClearPhase) ...[
-                          const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: List.generate(4, (i) {
-                              final isCurrent = i == _step;
-                              return Container(
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                ),
-                                width: isCurrent ? 10 : 8,
-                                height: isCurrent ? 10 : 8,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: isCurrent
-                                      ? kGold
-                                      : Colors.transparent,
-                                  border: Border.all(
-                                    color: isCurrent ? kGold : kGoldDark,
-                                    width: 1.5,
-                                  ),
-                                ),
-                              );
-                            }),
-                          ),
-                        ],
-                        const SizedBox(height: 24),
-                        Directionality(
-                          textDirection: isHe
-                              ? TextDirection.rtl
-                              : TextDirection.ltr,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                children: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        widget.onFinish(skipped: true),
-                                    child: Text(
-                                      isHe ? 'דלג' : 'Skip',
-                                      style: const TextStyle(color: kGoldDark),
-                                    ),
-                                  ),
-                                  if (!widget.isClearPhase && _step > 0) ...[
-                                    const SizedBox(width: 8),
-                                    TextButton(
-                                      onPressed: _prevStep,
-                                      child: Text(
-                                        isHe ? 'חזור' : 'Back',
-                                        style: const TextStyle(
-                                          color: kGoldLight,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
+                        );
+                      }),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Navigation
+                    Directionality(
+                      textDirection:
+                          isHe ? TextDirection.rtl : TextDirection.ltr,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(children: [
+                            TextButton(
+                              onPressed: () =>
+                                  widget.onFinish(skipped: true),
+                              child: Text(
+                                isHe ? 'דלג' : 'Skip',
+                                style:
+                                    const TextStyle(color: kGoldDark),
                               ),
-                              FilledButton(
-                                onPressed: _nextStep,
+                            ),
+                            if (_step > 0) ...[
+                              const SizedBox(width: 2),
+                              TextButton(
+                                onPressed: () => _goTo(_step - 1),
                                 child: Text(
-                                  widget.isClearPhase || _step == 3
-                                      ? (isHe ? 'שחק!' : 'Play!')
-                                      : (isHe ? 'הבא' : 'Next'),
+                                  isHe ? 'חזור' : 'Back',
+                                  style: const TextStyle(
+                                      color: kGoldLight),
                                 ),
                               ),
                             ],
+                          ]),
+                          FilledButton(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: kGold,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 11),
+                              textStyle: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            onPressed: _isLast
+                                ? () => widget.onFinish(skipped: false)
+                                : () => _goTo(_step + 1),
+                            child: Text(
+                              _isLast
+                                  ? (isHe ? "יאללה נשחק! 👑" : "Let's Play! 👑")
+                                  : (isHe ? 'הבא' : 'Next'),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),

@@ -1,73 +1,73 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibration/vibration.dart';
 import '../utils/web_vibrate_stub.dart'
     if (dart.library.js_interop) '../utils/web_vibrate_web.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HAPTIC SERVICE
-// Centralises all haptic feedback for Royal Frame.
+// Uses the `vibration` package for precise amplitude/duration control on
+// Android, falls back to web navigator.vibrate on Web, and is a no-op on
+// platforms without a vibrator.
 //
 // Usage:
-//   await HapticService.load();          // once, in main() or initState
-//   HapticService.light();               // tap / selection
-//   HapticService.heavy();               // illegal move / error
+//   await HapticService.load();          // once, in initState
+//   HapticService.light();               // card tap / selection
+//   HapticService.heavy();               // invalid move / error
 //   HapticService.success();             // clear pair / good action
+//   HapticService.selection();           // undo / move confirm
 //   await HapticService.setEnabled(v);   // toggle + persist
 // ─────────────────────────────────────────────────────────────────────────────
 
 class HapticService {
-  HapticService._(); // non-instantiable
+  HapticService._();
 
   static const String _prefKey = 'royalFrameHapticsEnabled';
 
-  /// Master switch. Read this anywhere; toggle via [setEnabled].
-  static bool isEnabled = true;
+  static bool isEnabled   = true;
+  static bool _hasVibrator = false;
 
-  // ── Persistence ─────────────────────────────────────────────────────────
+  // ── Init ─────────────────────────────────────────────────────────────────
 
-  /// Load the saved preference. Call once at app start (or in BoardScreen's
-  /// initState). Safe to call multiple times.
+  /// Call once at app start. Loads the saved toggle and checks hardware caps.
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     isEnabled = prefs.getBool(_prefKey) ?? true;
+
+    if (!kIsWeb) {
+      _hasVibrator = await Vibration.hasVibrator();
+    }
   }
 
-  /// Persist the new value and update [isEnabled].
   static Future<void> setEnabled(bool value) async {
     isEnabled = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefKey, value);
   }
 
-  // ── Feedback methods ─────────────────────────────────────────────────────
+  // ── Internal helper ───────────────────────────────────────────────────────
 
-  /// Light impact — use for: cell tap, card selection, toggle press.
-  static void light() {
+  static void _vibrate({required int duration, required int amplitude}) {
     if (!isEnabled) return;
-    if (kIsWeb) { webVibrate(30); return; }
-    HapticFeedback.lightImpact();
+    if (kIsWeb) {
+      webVibrate(duration);
+      return;
+    }
+    if (!_hasVibrator) return;
+    Vibration.vibrate(duration: duration, amplitude: amplitude);
   }
 
-  /// Heavy impact — use for: illegal move, error flash.
-  static void heavy() {
-    if (!isEnabled) return;
-    if (kIsWeb) { webVibrate(80); return; }
-    HapticFeedback.heavyImpact();
-  }
+  // ── Public API ────────────────────────────────────────────────────────────
 
-  /// Medium impact — use for: successful clear pair, phase transition.
-  /// Named [success] to communicate intent at the call site.
-  static void success() {
-    if (!isEnabled) return;
-    if (kIsWeb) { webVibrate(50); return; }
-    HapticFeedback.mediumImpact();
-  }
+  /// Light tap — card selection, normal placement.
+  static void light() => _vibrate(duration: 30, amplitude: 60);
 
-  /// Selection click — use for: undo/redo, move-card confirm.
-  static void selection() {
-    if (!isEnabled) return;
-    if (kIsWeb) { webVibrate(20); return; }
-    HapticFeedback.selectionClick();
-  }
+  /// Heavy buzz — invalid move, error flash, game over.
+  static void heavy() => _vibrate(duration: 80, amplitude: 255);
+
+  /// Medium pulse — successful clear pair, phase transition.
+  static void success() => _vibrate(duration: 50, amplitude: 140);
+
+  /// Crisp click — undo, move-card confirm.
+  static void selection() => _vibrate(duration: 20, amplitude: 80);
 }

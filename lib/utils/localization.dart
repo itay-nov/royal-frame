@@ -112,6 +112,18 @@ class L {
   String get welcomeTagline =>
       isHe ? 'אתגר הקלפים המלכותי' : 'The royal card challenge';
 
+  // Share strings
+  String shareVictory(String time, int score, String link) => isHe
+      ? 'ניצחתי את Royal Frame! זמן: $time, ניקוד: $score. נסו לעקוף אותי... שחקו עכשיו: $link'
+      : 'I just won Royal Frame! Time: $time, Score: $score. Think you can beat me? Play now: $link';
+
+  String shareGameOver(int score, String link) => isHe
+      ? 'השגתי $score נקודות ב-Royal Frame! נראה אם תצליחו לעקוף אותי... שחקו עכשיו: $link'
+      : 'I scored $score points in Royal Frame! Think you can beat me? Play now: $link';
+
+  String get shareVictoryBtn => isHe ? 'שתף ניצחון' : 'Share Victory';
+  String get shareScoreBtn   => isHe ? 'שתף ניקוד' : 'Share Score';
+
   String get dialogHomeTitle => isHe ? 'חזרה לתפריט' : 'Return to Menu';
   String get dialogHomeBody => isHe
       ? 'המשחק ימתין לך ברקע. האם להמשיך?'

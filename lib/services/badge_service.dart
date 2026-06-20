@@ -1,24 +1,26 @@
-import 'package:shared_preferences/shared_preferences.dart';
+import 'secure_storage_service.dart';
 
 class BadgeService {
   static const String _keyHasPlacedAllQueens = 'badge_hasPlacedAllQueens';
 
-  static SharedPreferences? _prefs;
+  static bool _queenBadgeUnlocked = false;
 
-  static bool get hasPlacedAllQueens =>
-      _prefs?.getBool(_keyHasPlacedAllQueens) ?? false;
-
-  // Convenience getter for external reads (e.g. future badge UI).
-  static bool get isQueenBadgeUnlocked =>
-      _prefs?.getBool(_keyHasPlacedAllQueens) ?? false;
+  static bool get hasPlacedAllQueens  => _queenBadgeUnlocked;
+  static bool get isQueenBadgeUnlocked => _queenBadgeUnlocked;
 
   static Future<void> load() async {
-    _prefs = await SharedPreferences.getInstance();
+    _queenBadgeUnlocked =
+        await SecureStorageService.readBool(_keyHasPlacedAllQueens) ?? false;
+  }
+
+  static Future<void> reset() async {
+    _queenBadgeUnlocked = false;
+    await SecureStorageService.delete(_keyHasPlacedAllQueens);
   }
 
   static Future<void> unlockQueenBadge() async {
-    if (isQueenBadgeUnlocked) return;
-    _prefs ??= await SharedPreferences.getInstance();
-    await _prefs!.setBool(_keyHasPlacedAllQueens, true);
+    if (_queenBadgeUnlocked) return;
+    _queenBadgeUnlocked = true;
+    await SecureStorageService.writeBool(_keyHasPlacedAllQueens, true);
   }
 }

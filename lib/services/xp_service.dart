@@ -1,6 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'secure_storage_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COSMETIC ITEM MODEL
@@ -182,12 +182,11 @@ class XpService {
   // ── Persistence ────────────────────────────────────────────────────────────
 
   static Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    _currentXP        = prefs.getInt(_keyXP) ?? 0;
-    _unlockedBackIds  = prefs.getStringList(_keyUnlockedBacks)  ?? ['classic_red'];
-    _unlockedColorIds = prefs.getStringList(_keyUnlockedColors) ?? ['burgundy'];
-    _equippedBackId   = prefs.getString(_keyEquippedBack)  ?? 'classic_red';
-    _equippedColorId  = prefs.getString(_keyEquippedColor) ?? 'burgundy';
+    _currentXP        = await SecureStorageService.readInt(_keyXP) ?? 0;
+    _unlockedBackIds  = await SecureStorageService.readStringList(_keyUnlockedBacks)  ?? ['classic_red'];
+    _unlockedColorIds = await SecureStorageService.readStringList(_keyUnlockedColors) ?? ['burgundy'];
+    _equippedBackId   = await SecureStorageService.read(_keyEquippedBack)  ?? 'classic_red';
+    _equippedColorId  = await SecureStorageService.read(_keyEquippedColor) ?? 'burgundy';
 
     // Ensure defaults are always in the unlocked lists (migration safety).
     if (!_unlockedBackIds.contains('classic_red'))  _unlockedBackIds.add('classic_red');
@@ -200,27 +199,37 @@ class XpService {
   static Future<void> addXP(int amount) async {
     _currentXP += max(0, amount);
     _autoUnlock();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keyXP, _currentXP);
-    await prefs.setStringList(_keyUnlockedBacks,  _unlockedBackIds);
-    await prefs.setStringList(_keyUnlockedColors, _unlockedColorIds);
+    await SecureStorageService.writeInt(_keyXP, _currentXP);
+    await SecureStorageService.writeStringList(_keyUnlockedBacks,  _unlockedBackIds);
+    await SecureStorageService.writeStringList(_keyUnlockedColors, _unlockedColorIds);
   }
 
   static Future<void> equipCardBack(String id) async {
     if (!_unlockedBackIds.contains(id)) return;
     _equippedBackId = id;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyEquippedBack, id);
+    await SecureStorageService.write(_keyEquippedBack, id);
   }
 
   static Future<void> equipBoardColor(String id) async {
     if (!_unlockedColorIds.contains(id)) return;
     _equippedColorId = id;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyEquippedColor, id);
+    await SecureStorageService.write(_keyEquippedColor, id);
   }
 
   // ── Internal helpers ───────────────────────────────────────────────────────
+
+  static Future<void> reset() async {
+    _currentXP        = 0;
+    _unlockedBackIds  = ['classic_red'];
+    _unlockedColorIds = ['burgundy'];
+    _equippedBackId   = 'classic_red';
+    _equippedColorId  = 'burgundy';
+    await SecureStorageService.delete(_keyXP);
+    await SecureStorageService.delete(_keyUnlockedBacks);
+    await SecureStorageService.delete(_keyUnlockedColors);
+    await SecureStorageService.delete(_keyEquippedBack);
+    await SecureStorageService.delete(_keyEquippedColor);
+  }
 
   static void _autoUnlock() {
     final level = playerLevel;

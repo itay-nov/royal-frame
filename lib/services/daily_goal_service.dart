@@ -1,5 +1,5 @@
 import 'dart:math';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'secure_storage_service.dart';
 import 'xp_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -111,18 +111,15 @@ class DailyGoalService {
   /// It checks whether a new day has started and, if so, picks a fresh goal
   /// from the pool at random. Otherwise it restores the saved progress.
   static Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final today         = _todayString();
-    final assignedDate  = prefs.getString(_keyAssignedDate) ?? '';
-    final savedGoalId   = prefs.getString(_keyGoalId) ?? '';
+    final today        = _todayString();
+    final assignedDate = await SecureStorageService.read(_keyAssignedDate) ?? '';
+    final savedGoalId  = await SecureStorageService.read(_keyGoalId) ?? '';
 
     if (assignedDate != today || savedGoalId.isEmpty) {
-      // New day (or first launch) -> pick a fresh random goal
-      await _assignNewGoal(prefs, today, previousId: savedGoalId);
+      await _assignNewGoal(today, previousId: savedGoalId);
     } else {
-      // Same day -> restore saved progress
-      final savedProgress  = prefs.getInt(_keyGoalProgress)  ?? 0;
-      final savedCompleted = prefs.getBool(_keyGoalCompleted) ?? false;
+      final savedProgress  = await SecureStorageService.readInt(_keyGoalProgress)  ?? 0;
+      final savedCompleted = await SecureStorageService.readBool(_keyGoalCompleted) ?? false;
 
       final template = _pool.firstWhere(
         (g) => g.id == savedGoalId,
@@ -141,11 +138,9 @@ class DailyGoalService {
   }
 
   static Future<void> _assignNewGoal(
-    SharedPreferences prefs,
     String today, {
     String previousId = '',
   }) async {
-    // Avoid assigning the same goal two days in a row (unless pool has 1 item)
     final candidates = _pool.length > 1
         ? _pool.where((g) => g.id != previousId).toList()
         : _pool;
@@ -159,10 +154,10 @@ class DailyGoalService {
       targetValue: chosen.targetValue,
     );
 
-    await prefs.setString(_keyGoalId,        chosen.id);
-    await prefs.setInt   (_keyGoalProgress,  0);
-    await prefs.setBool  (_keyGoalCompleted, false);
-    await prefs.setString(_keyAssignedDate,  today);
+    await SecureStorageService.write(_keyGoalId,       chosen.id);
+    await SecureStorageService.writeInt(_keyGoalProgress, 0);
+    await SecureStorageService.writeBool(_keyGoalCompleted, false);
+    await SecureStorageService.write(_keyAssignedDate, today);
   }
 
   // ── Progress update ───────────────────────────────────────────────────────
@@ -185,10 +180,8 @@ class DailyGoalService {
       goal.isCompleted = true;
     }
 
-    // Persist
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt (_keyGoalProgress,  goal.currentValue);
-    await prefs.setBool(_keyGoalCompleted, goal.isCompleted);
+    await SecureStorageService.writeInt(_keyGoalProgress,  goal.currentValue);
+    await SecureStorageService.writeBool(_keyGoalCompleted, goal.isCompleted);
 
     // Award XP bonus when the goal is completed for the first time today.
     if (justCompleted) {
@@ -208,4 +201,12 @@ class DailyGoalService {
     'tactician'            => GoalType.useUndo,
     _                      => null,
   };
+
+  static Future<void> reset() async {
+    _current = null;
+    await SecureStorageService.delete(_keyGoalId);
+    await SecureStorageService.delete(_keyGoalProgress);
+    await SecureStorageService.delete(_keyGoalCompleted);
+    await SecureStorageService.delete(_keyAssignedDate);
+  }
 }
