@@ -6,10 +6,12 @@ import '../theme_constants.dart';
 import '../models/game_model.dart';
 import '../utils/localization.dart';
 import 'board_screen.dart';
+import 'duel_setup_screen.dart';
 import 'welcome_screen.dart';
 import '../services/db_service.dart';
 import '../services/auth_service.dart';
 import '../services/haptic_service.dart';
+import '../services/streak_service.dart';
 import '../models/player_model.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,7 +38,36 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     super.initState();
     _loadPlayerName();
     _loadMuteState();
+    _loadSavedLang();
     HapticService.load();
+    _loadStreak();
+  }
+
+  Future<void> _loadStreak() async {
+    await StreakService.load();
+    if (!mounted) return;
+    setState(() {});
+    if (StreakService.justExtended && StreakService.streak > 1) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showStreakDialog());
+    }
+  }
+
+  void _showStreakDialog() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => _StreakDialog(
+        streak: StreakService.streak,
+        lang: _lang,
+      ),
+    );
+  }
+
+  Future<void> _loadSavedLang() async {
+    final lang = await L.loadLang();
+    if (!mounted) return;
+    setState(() => _lang = lang);
   }
 
   Future<void> _loadPlayerName() async {
@@ -74,6 +105,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
             BoardScreen(
               existingGame: isResume ? _activeGame : null,
               showNewGamePicker: !isResume,
+              initialLang: _lang,
             ),
       ),
     );
@@ -93,7 +125,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     final returnedGame = await Navigator.of(context).push<GameState>(
       MaterialPageRoute(
         builder: (_) =>
-            BoardScreen(existingGame: _activeGame, forceTutorial: true),
+            BoardScreen(existingGame: _activeGame, forceTutorial: true, initialLang: _lang),
       ),
     );
 
@@ -125,40 +157,69 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         titleSpacing: 12,
         title: Row(
           children: [
-            RichText(
-              text: const TextSpan(
-                children: [
-                  TextSpan(
-                    text: 'Royal\n',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w300,
-                      letterSpacing: 1,
-                      color: kGoldLight,
-                      height: 1.0,
+            if (_lang == AppLang.he)
+              RichText(
+                textDirection: TextDirection.rtl,
+                text: const TextSpan(
+                  children: [
+                    TextSpan(
+                      text: 'Royal Frame\n',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1,
+                        color: kGold,
+                        height: 1.0,
+                      ),
                     ),
-                  ),
-                  TextSpan(
-                    text: 'Frame',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1,
-                      color: kGold,
-                      height: 1.0,
+                    TextSpan(
+                      text: 'משחק הקלפים המלכותי',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w300,
+                        letterSpacing: 0.5,
+                        color: kGoldLight,
+                        height: 1.2,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+              )
+            else
+              RichText(
+                text: const TextSpan(
+                  children: [
+                    TextSpan(
+                      text: 'Royal\n',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w300,
+                        letterSpacing: 1,
+                        color: kGoldLight,
+                        height: 1.0,
+                      ),
+                    ),
+                    TextSpan(
+                      text: 'Frame',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1,
+                        color: kGold,
+                        height: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
             const Spacer(),
             IconButton(
               tooltip: _lang == AppLang.he ? 'English' : 'עברית',
               icon: const Icon(Icons.language, color: kGold),
               onPressed: () {
-                setState(() {
-                  _lang = _lang == AppLang.he ? AppLang.en : AppLang.he;
-                });
+                final newLang = _lang == AppLang.he ? AppLang.en : AppLang.he;
+                setState(() => _lang = newLang);
+                L.saveLang(newLang);
               },
             ),
             IconButton(
@@ -184,68 +245,88 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
           ],
         ),
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text('👑', style: TextStyle(fontSize: 60)),
-            const SizedBox(height: 8),
-            const Text(
-              'ROYAL FRAME',
-              style: TextStyle(
-                color: kGold,
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 3,
+      body: Directionality(
+        textDirection:
+            _lang == AppLang.he ? TextDirection.rtl : TextDirection.ltr,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('👑', style: TextStyle(fontSize: 60)),
+              const SizedBox(height: 8),
+              const Text(
+                'ROYAL FRAME',
+                style: TextStyle(
+                  color: kGold,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 3,
+                ),
               ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              _l.welcomeBack(_playerName),
-              style: const TextStyle(color: kGoldLight, fontSize: 18),
-            ),
-            const SizedBox(height: 48),
-
-            if (_activeGame != null) ...[
-              _buildMenuButton(
-                _l.menuResume,
-                Icons.play_arrow,
-                () => _startOrResumeGame(isResume: true),
-                isHighlight: true,
+              const SizedBox(height: 24),
+              Text(
+                _l.welcomeBack(_playerName),
+                style: const TextStyle(color: kGoldLight, fontSize: 18),
               ),
               const SizedBox(height: 16),
-            ],
+              _StreakBadge(streak: StreakService.streak, lang: _lang),
+              const SizedBox(height: 32),
 
-            _buildMenuButton(
-              _l.menuNewGame,
-              Icons.add_circle_outline,
-              () => _startOrResumeGame(isResume: false),
-            ),
-            const SizedBox(height: 16),
-            _buildMenuButton(
-              _l.menuLeaderboard,
-              Icons.leaderboard,
-              _showLeaderboard,
-            ),
-            const SizedBox(height: 16),
-            _buildMenuButton('Tutorial', Icons.school_outlined, _startTutorial),
-            const SizedBox(height: 16),
+              if (_activeGame != null) ...[
+                _buildMenuButton(
+                  _l.menuResume,
+                  Icons.play_arrow,
+                  () => _startOrResumeGame(isResume: true),
+                  isHighlight: true,
+                ),
+                const SizedBox(height: 16),
+              ],
 
-            TextButton.icon(
-              onPressed: () async {
-                await AuthService().signOut();
-                if (!mounted) return;
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (_) => const WelcomeScreen()),
-                );
-              },
-              icon: const Icon(Icons.person, color: kGoldDark),
-              label: Text(
-                _l.menuChangePlayer,
-                style: const TextStyle(color: kGoldDark),
+              _buildMenuButton(
+                _l.menuNewGame,
+                Icons.add_circle_outline,
+                () => _startOrResumeGame(isResume: false),
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+              _buildMenuButton(
+                _l.menuLeaderboard,
+                Icons.leaderboard,
+                _showLeaderboard,
+              ),
+              const SizedBox(height: 16),
+              _buildMenuButton(
+                _l.menuTutorial,
+                Icons.school_outlined,
+                _startTutorial,
+              ),
+              const SizedBox(height: 16),
+              _buildMenuButton(
+                _l.menuDuelMode,
+                Icons.sports_kabaddi,
+                () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const DuelSetupScreen(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              TextButton.icon(
+                onPressed: () async {
+                  await AuthService().signOut();
+                  if (!mounted) return;
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+                  );
+                },
+                icon: const Icon(Icons.person, color: kGoldDark),
+                label: Text(
+                  _l.menuChangePlayer,
+                  style: const TextStyle(color: kGoldDark),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -276,6 +357,98 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         label: Text(
           text,
           style: const TextStyle(fontSize: 16, letterSpacing: 1),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STREAK BADGE  (shown inline in the menu)
+// ─────────────────────────────────────────────────────────────────────────────
+class _StreakBadge extends StatelessWidget {
+  final int streak;
+  final AppLang lang;
+  const _StreakBadge({required this.streak, required this.lang});
+
+  @override
+  Widget build(BuildContext context) {
+    if (streak <= 0) return const SizedBox.shrink();
+    final isHe = lang == AppLang.he;
+    final label = isHe ? 'יום $streak ברצף 🔥' : '🔥 $streak-day streak';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+      decoration: BoxDecoration(
+        color: kBurgundyLight,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: kGold.withOpacity(0.7), width: 1.5),
+        boxShadow: [BoxShadow(color: kGold.withOpacity(0.15), blurRadius: 10)],
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: kGold,
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STREAK DIALOG  (shown on new-day login)
+// ─────────────────────────────────────────────────────────────────────────────
+class _StreakDialog extends StatelessWidget {
+  final int streak;
+  final AppLang lang;
+  const _StreakDialog({required this.streak, required this.lang});
+
+  @override
+  Widget build(BuildContext context) {
+    final isHe = lang == AppLang.he;
+    final title = isHe ? 'רצף יומי! 🔥' : 'Daily Streak! 🔥';
+    final body  = isHe
+        ? 'כל הכבוד! $streak ימים ברצף.\nהמשך לשחק כדי לא לאבד את הרצף!'
+        : 'Amazing! $streak days in a row.\nKeep playing to protect your streak!';
+    final btn   = isHe ? 'יאללה!' : "Let's go!";
+
+    return Dialog(
+      backgroundColor: kBurgundyLight,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('🔥', style: const TextStyle(fontSize: 52)),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: kGold,
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              body,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: kGoldLight,
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(btn),
+            ),
+          ],
         ),
       ),
     );

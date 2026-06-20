@@ -29,8 +29,26 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   final TextEditingController _nameCtrl = TextEditingController();
   final AuthService _authService = AuthService();
   bool _isLoading = false;
-  final AppLang _lang = AppLang.en;
+  AppLang _lang = AppLang.en;
   L get _l => L(_lang);
+
+  // Title entrance animation
+  bool _visible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedLang();
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (mounted) setState(() => _visible = true);
+    });
+  }
+
+  Future<void> _loadSavedLang() async {
+    final lang = await L.loadLang();
+    if (!mounted) return;
+    setState(() => _lang = lang);
+  }
 
   @override
   void dispose() {
@@ -352,60 +370,162 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   // ─── Build ─────────────────────────────────────────────────────────────────
 
+  void _toggleLang() {
+    final newLang = _lang == AppLang.he ? AppLang.en : AppLang.he;
+    setState(() => _lang = newLang);
+    L.saveLang(newLang);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBurgundy,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('👑', style: TextStyle(fontSize: 80)),
-              const SizedBox(height: 12),
-              const Text(
-                'ROYAL FRAME',
-                style: TextStyle(
-                  color: kGold,
-                  fontSize: 32,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 4,
-                ),
-              ),
+      body: Stack(
+        children: [
+          // ── Subtle radial glow decoration ──────────────────────────────────
+          Positioned(
+            top: -80,
+            left: -60,
+            child: _glowCircle(340),
+          ),
+          Positioned(
+            bottom: -100,
+            right: -80,
+            child: _glowCircle(380),
+          ),
 
-              const SizedBox(height: 56),
-
-              SizedBox(
-                width: _kButtonWidth,
-                child: TextField(
-                  controller: _nameCtrl,
-                  style: const TextStyle(color: kGoldLight, fontSize: 17),
-                  textAlign: TextAlign.center,
-                  decoration: InputDecoration(
-                    hintText: 'Enter your name for Guest Login',
-                    hintStyle: TextStyle(
-                      color: kGoldDark.withOpacity(0.55),
-                      fontSize: 15,
-                    ),
-                    enabledBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: kGoldDark),
-                    ),
-                    focusedBorder: const UnderlineInputBorder(
-                      borderSide: BorderSide(color: kGold, width: 2),
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // ── Animated title block ─────────────────────────────────
+                  AnimatedOpacity(
+                    opacity: _visible ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 600),
+                    child: AnimatedSlide(
+                      offset: _visible ? Offset.zero : const Offset(0, -0.15),
+                      duration: const Duration(milliseconds: 600),
+                      curve: Curves.easeOut,
+                      child: Column(
+                        children: [
+                          const Text('👑', style: TextStyle(fontSize: 80)),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'ROYAL FRAME',
+                            style: TextStyle(
+                              color: kGold,
+                              fontSize: 32,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 4,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          // ── Card suit symbols ──────────────────────────
+                          const Text(
+                            '♠  ♥  ♦  ♣',
+                            style: TextStyle(
+                              color: kGold,
+                              fontSize: 18,
+                              letterSpacing: 6,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          // ── Tagline ────────────────────────────────────
+                          Text(
+                            _l.welcomeTagline,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: kGoldDark,
+                              letterSpacing: 1.5,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  onSubmitted: (_) => _startGame(),
-                ),
+
+                  const SizedBox(height: 56),
+
+                  SizedBox(
+                    width: _kButtonWidth,
+                    child: TextField(
+                      controller: _nameCtrl,
+                      style: const TextStyle(color: kGoldLight, fontSize: 17),
+                      textAlign: TextAlign.center,
+                      decoration: InputDecoration(
+                        hintText: _l.welcomeHint,
+                        hintStyle: TextStyle(
+                          color: kGoldDark.withOpacity(0.55),
+                          fontSize: 15,
+                        ),
+                        enabledBorder: const UnderlineInputBorder(
+                          borderSide: BorderSide(color: kGoldDark),
+                        ),
+                        focusedBorder: const UnderlineInputBorder(
+                          borderSide: BorderSide(color: kGold, width: 2),
+                        ),
+                      ),
+                      onSubmitted: (_) => _startGame(),
+                    ),
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  _isLoading
+                      ? const CircularProgressIndicator(color: kGold)
+                      : _buildButtonGroup(),
+                ],
               ),
-
-              const SizedBox(height: 28),
-
-              _isLoading
-                  ? const CircularProgressIndicator(color: kGold)
-                  : _buildButtonGroup(),
-            ],
+            ),
           ),
+          // Prominent language toggle pinned to top-right
+          Positioned(
+            top: 48,
+            right: 16,
+            child: _buildLangToggle(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _glowCircle(double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: kGold.withOpacity(0.04),
+      ),
+    );
+  }
+
+  Widget _buildLangToggle() {
+    // Shows the *target* language (the one you'll switch TO) so the player
+    // instantly sees "עברית" if the app is in English, or "English" if in Hebrew.
+    final targetLabel = _lang == AppLang.he ? 'English' : 'עברית';
+    return OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        backgroundColor: Colors.black.withOpacity(0.35),
+        foregroundColor: kGold,
+        side: const BorderSide(color: kGold, width: 1.5),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      ),
+      onPressed: _toggleLang,
+      icon: const Icon(Icons.language, size: 18, color: kGold),
+      label: Text(
+        targetLabel,
+        style: const TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          color: kGold,
+          letterSpacing: 0.3,
         ),
       ),
     );

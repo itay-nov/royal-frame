@@ -1,20 +1,41 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:confetti/confetti.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:screenshot/screenshot.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../theme_constants.dart';
 import '../models/game_model.dart';
 import '../utils/localization.dart';
 import '../widgets/tutorial_overlay.dart';
+import '../widgets/floating_hint.dart';
+import '../services/tutorial_manager.dart';
 import '../services/db_service.dart';
 import '../services/haptic_service.dart';
+import '../services/duel_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/daily_goal_service.dart';
 import '../services/xp_service.dart';
 import '../services/badge_service.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TUTORIAL HINT TYPES
+// ─────────────────────────────────────────────────────────────────────────────
+enum _HintType {
+  none,
+  numberCard,
+  royalCard,
+  clearStart,
+  clearFirstDone,
+  clearRoyalHint,
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BOARD SCREEN
@@ -24,12 +45,19 @@ class BoardScreen extends StatefulWidget {
   final bool forceTutorial;
   // When true, the difficulty picker opens immediately on first frame.
   final bool showNewGamePicker;
+  // Duel mode — set by DuelSetupScreen when a match is found.
+  final DuelSession? duelSession;
+  final bool isHost;
+  final AppLang? initialLang;
 
   const BoardScreen({
     super.key,
     this.existingGame,
     this.forceTutorial = false,
     this.showNewGamePicker = false,
+    this.duelSession,
+    this.isHost = false,
+    this.initialLang,
   });
 
   @override
@@ -48,6 +76,12 @@ class _BoardScreenState extends State<BoardScreen>
 
   Timer? _inactivityTimer;
   Timer? _uiTimer;
+
+  // Duel mode state
+  DuelSession? _duelSession;
+  StreamSubscription<DuelSession?>? _duelSub;
+  int _opponentScore = 0;
+  bool _duelFinishedReported = false;
 
   // Extreme countdown limit in seconds.
   static const int _extremeSeconds = 180;
@@ -71,6 +105,8 @@ class _BoardScreenState extends State<BoardScreen>
     if (mounted) setState(() {});
   }
 
+  final ScreenshotController _screenshotCtrl = ScreenshotController();
+
   Set<int> _hintedPair = {};
   bool _hintCurrentCard = false;
   late AnimationController _hintPulseCtrl;
@@ -79,29 +115,37 @@ class _BoardScreenState extends State<BoardScreen>
   late AnimationController _phasePulseCtrl;
   bool _showPhasePulse = false;
   String _phaseLabel = '';
+  String _phaseSubLabel = '';
 
   bool _moveMode = false;
   int? _moveFromIndex;
-  bool _showDebugTools = false;
-
   bool _godMode = false;
 
   CardModel? _draggingCard;
 
-  AppLang _lang = AppLang.en;
+  late AppLang _lang;
   L get _l => L(_lang);
 
   bool _showGameOverOverlay = false;
   bool _isAnimatingClear = false;
   Set<int> _errorHighlights = {};
 
-  bool _showTutorial = false;
-  bool _showClearTutorial = false;
-  bool _hasSeenInitialTutorial = false;
-  bool _hasSeenClearTutorial = false;
+  // Tutorial (Phase A = blocking modals, Phase B/C = floating hints)
+  bool _showWelcomeModals = false;
+  bool _phaseAComplete = false; // guards against hints spawning during modals
+  _HintType _activeHint = _HintType.none;
+  int _clearHintStep = 0;
+  Timer? _hintAutoTimer;
 
   // Prevents duplicate XP awards if _checkEndState is called more than once.
   bool _xpAwardedThisGame = false;
+  // Prevents duplicate stats/goal updates when overlay rebuilds.
+  bool _statsUpdatedThisGame = false;
+
+  // Optional-clearing setting
+  static const String _optionalClearingPrefKey = 'royalFrameOptionalClearing';
+  bool _optionalClearing = false;
+  bool _clearedAtLeastOnePairThisPhase = false;
 
   // Audio
   static const String _mutePrefKey = 'royalFrameMuted';
@@ -126,6 +170,7 @@ class _BoardScreenState extends State<BoardScreen>
   @override
   void initState() {
     super.initState();
+    _lang = widget.initialLang ?? AppLang.en;
     WidgetsBinding.instance.addObserver(this);
     _cellKeys = List.generate(16, (_) => GlobalKey());
     _confettiCtrl = ConfettiController(duration: const Duration(seconds: 6));
@@ -135,7 +180,7 @@ class _BoardScreenState extends State<BoardScreen>
     );
     _phasePulseCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 2400),
     );
     game = widget.existingGame ?? GameState.newGame();
     _difficulty = game.difficulty;
@@ -157,12 +202,41 @@ class _BoardScreenState extends State<BoardScreen>
 
     _initAudio();
     _loadMuteState();
+    _loadSavedLang();
     HapticService.load();
-    _loadTutorialState();
+    _initTutorial();
     _startUITimer();
     DailyGoalService.load();
     XpService.load();
     BadgeService.load();
+    _initDuelMode();
+  }
+
+  // ── Duel mode ──────────────────────────────────────────────────────────────
+
+  void _initDuelMode() {
+    if (widget.duelSession == null) return;
+    _duelSession = widget.duelSession;
+
+    // In duel mode use the shared seed so both players get the same deck.
+    final seed = _duelSession!.seed;
+    game = GameState.newGame(seed: seed);
+    game.evaluateGameOverInFill();
+
+    _duelSub = DuelService.watchDuel(_duelSession!.duelId).listen((updated) {
+      if (!mounted || updated == null) return;
+      setState(() {
+        _duelSession = updated;
+        final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+        final isHost = updated.hostUid == myUid;
+        _opponentScore = isHost ? updated.guestScore : updated.hostScore;
+      });
+    });
+  }
+
+  Future<void> _syncDuelScore() async {
+    if (_duelSession == null) return;
+    await DuelService.syncScore(_duelSession!.duelId, game.score);
   }
 
   Future<void> _loadSavedDifficulty() async {
@@ -179,38 +253,111 @@ class _BoardScreenState extends State<BoardScreen>
     });
   }
 
-  Future<void> _loadTutorialState() async {
-    final prefs = await SharedPreferences.getInstance();
-    final playerId = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+  Future<void> _loadSavedLang() async {
+    if (widget.initialLang != null) return;
+    final lang = await L.loadLang();
+    if (!mounted) return;
+    setState(() => _lang = lang);
+  }
 
-    _hasSeenInitialTutorial =
-        prefs.getBool('hasSeenTutorialV2_$playerId') ?? false;
-    _hasSeenClearTutorial =
-        prefs.getBool('hasSeenClearTutorialV2_$playerId') ?? false;
+  // ── Tutorial system ────────────────────────────────────────────────────────
 
-    if (widget.forceTutorial) {
-      setState(() {
-        if (game.phase == Phase.clear) {
-          _showClearTutorial = true;
-        } else {
-          _showTutorial = true;
-        }
-      });
+  Future<void> _initTutorial() async {
+    final shouldRun =
+        await TutorialManager.init(force: widget.forceTutorial);
+    if (!mounted) return;
+    if (shouldRun) {
+      setState(() => _showWelcomeModals = true);
       _inactivityTimer?.cancel();
       _hintPulseCtrl.stop();
       _hintCurrentCard = false;
       _hintedPair.clear();
+    }
+  }
+
+  /// Called after welcome modals close and after every card placement
+  /// during Phase B. Updates the floating hint based on game.current.
+  void _evaluateFillHint() {
+    if (!mounted) return;
+    if (!_phaseAComplete) return;
+    if (TutorialManager.phase != TutorialPhase.fillHints) return;
+    if (game.phase != Phase.fill) return; // transition handled elsewhere
+
+    final current = game.current;
+    if (current == null) {
+      setState(() => _activeHint = _HintType.none);
       return;
     }
+    setState(() => _activeHint =
+        current.isNumOrAce ? _HintType.numberCard : _HintType.royalCard);
+  }
 
-    if (!_hasSeenInitialTutorial) {
-      setState(() => _showTutorial = true);
-      _inactivityTimer?.cancel();
-      _hintPulseCtrl.stop();
-      _hintCurrentCard = false;
-      _hintedPair.clear();
-      await prefs.setBool('hasSeenTutorialV2_$playerId', true);
-    }
+  /// Called when fill->clear transition happens while tutorial is active.
+  void _onClearPhaseStarted() {
+    if (!_phaseAComplete) return;
+    if (TutorialManager.phase != TutorialPhase.fillHints) return;
+    TutorialManager.advance(TutorialPhase.clearHints);
+    setState(() {
+      _activeHint = _HintType.clearStart;
+      _clearHintStep = 0;
+    });
+  }
+
+  /// Called after each successful pair clear during Phase C.
+  void _advanceClearHint() {
+    if (TutorialManager.phase != TutorialPhase.clearHints) return;
+    if (_clearHintStep != 0) return; // only fire on the first clear
+
+    _clearHintStep = 1;
+    setState(() => _activeHint = _HintType.clearFirstDone);
+
+    _hintAutoTimer?.cancel();
+    _hintAutoTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      setState(() {
+        _clearHintStep = 2;
+        _activeHint = _HintType.clearRoyalHint;
+      });
+      _hintAutoTimer = Timer(const Duration(seconds: 5), () {
+        if (!mounted) return;
+        setState(() => _activeHint = _HintType.none);
+        TutorialManager.complete();
+      });
+    });
+  }
+
+  /// True when all 4 inner dump slots (indices 5, 6, 9, 10) are occupied.
+  bool get _centerSlotsFull =>
+      game.cells[5] != null &&
+      game.cells[6] != null &&
+      game.cells[9] != null &&
+      game.cells[10] != null;
+
+  /// Current hint message (localised).
+  String get _hintMessage {
+    final isHe = _lang == AppLang.he;
+    return switch (_activeHint) {
+      _HintType.numberCard => _centerSlotsFull
+          ? (isHe
+              ? 'קלף מספר! המרכז מלא, מקם אותו בחוכמה במסגרת החיצונית.'
+              : 'You drew a number! Now place it carefully on the outer frame.')
+          : (isHe
+              ? 'קלף מספר! כדאי למקם אותו ב-4 משבצות המרכז.'
+              : 'You drew a number! Best to place it in the center 4 slots.'),
+      _HintType.royalCard => isHe
+          ? 'קלף מלוכה! מקם אותו על המשבצת המתאימה במסגרת החיצונית.'
+          : 'A Royal card! Place it on its matching slot in the outer frame.',
+      _HintType.clearStart => isHe
+          ? 'הלוח מלא! בחר שני קלפים שסכומם 11 (למשל 6 ו-5, או 8 ו-3).'
+          : 'Board is full! Select two cards that sum to 11 (e.g. 6 and 5, or 8 and 3).',
+      _HintType.clearFirstDone => isHe
+          ? 'מצוין! המשך לפנות זוגות.'
+          : 'Great! Keep clearing pairs.',
+      _HintType.clearRoyalHint => isHe
+          ? 'קלפי מלוכה מתנקים בצמדים: J עם J, Q עם Q, K עם K.'
+          : 'Royals clear in pairs: J with J, Q with Q, K with K.',
+      _ => '',
+    };
   }
 
   Future<void> _loadMuteState() async {
@@ -218,6 +365,7 @@ class _BoardScreenState extends State<BoardScreen>
     if (!mounted) return;
     setState(() {
       _isMuted = prefs.getBool(_mutePrefKey) ?? false;
+      _optionalClearing = prefs.getBool(_optionalClearingPrefKey) ?? false;
     });
   }
 
@@ -241,6 +389,13 @@ class _BoardScreenState extends State<BoardScreen>
   Future<void> _toggleHaptic() async {
     await HapticService.setEnabled(!HapticService.isEnabled);
     if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleOptionalClearing() async {
+    final prefs = await SharedPreferences.getInstance();
+    final newValue = !_optionalClearing;
+    await prefs.setBool(_optionalClearingPrefKey, newValue);
+    setState(() => _optionalClearing = newValue);
   }
 
   void _startUITimer() {
@@ -274,7 +429,7 @@ class _BoardScreenState extends State<BoardScreen>
   void _restartHintTimer() {
     _inactivityTimer?.cancel();
 
-    if (_showTutorial || _showClearTutorial) return;
+    if (_showWelcomeModals) return;
 
     if (_hintedPair.isNotEmpty || _hintCurrentCard) {
       setState(() {
@@ -290,7 +445,7 @@ class _BoardScreenState extends State<BoardScreen>
         if (mounted &&
             game.phase == Phase.clear &&
             !_isAnimatingClear &&
-            !_showClearTutorial) {
+            !_showWelcomeModals) {
           final nums = <int, int>{};
           for (int i = 0; i < game.cells.length; i++) {
             final c = game.cells[i];
@@ -310,7 +465,7 @@ class _BoardScreenState extends State<BoardScreen>
       });
     } else if (game.phase == Phase.fill && game.current != null) {
       _inactivityTimer = Timer(const Duration(seconds: 5), () {
-        if (mounted && game.phase == Phase.fill && !_showTutorial) {
+        if (mounted && game.phase == Phase.fill && !_showWelcomeModals) {
           setState(() => _hintCurrentCard = true);
           _hintPulseCtrl.repeat(reverse: true);
         }
@@ -393,7 +548,7 @@ class _BoardScreenState extends State<BoardScreen>
       await _lossPlayer.setSourceAsset('audio/game_over.mp3');
       await _popPlayer.setSourceAsset('audio/pop.mp3');
       await _placePlayer.setSourceAsset('audio/place_card.mp3');
-      await _phasePlayer.setSourceAsset('audio/pop.mp3');
+      await _phasePlayer.setSourceAsset('audio/phase_change.mp3');
       _isAudioInitialized = true;
     } catch (_) {}
   }
@@ -431,6 +586,8 @@ class _BoardScreenState extends State<BoardScreen>
       try { p.stop(); } catch (_) {}
       p.dispose();
     }
+    _duelSub?.cancel();
+    _hintAutoTimer?.cancel();
     super.dispose();
   }
 
@@ -518,8 +675,16 @@ class _BoardScreenState extends State<BoardScreen>
       _moveFromIndex = null;
       _showGameOverOverlay = game.phase == Phase.gameOver;
     });
+    // Stop any lingering win/loss audio so normal sound effects work again.
+    _stopAllAudioNow();
     DailyGoalService.addProgress(GoalType.useUndo, 1);
     _restartHintTimer();
+    if (TutorialManager.isActive) {
+      _hintAutoTimer?.cancel();
+      setState(() => _activeHint = _HintType.none);
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _evaluateFillHint());
+    }
   }
 
   void _redoAction() {
@@ -544,6 +709,7 @@ class _BoardScreenState extends State<BoardScreen>
       barrierDismissible: true,
       builder: (_) => _DifficultyPickerDialog(
         current: _difficulty,
+        lang: _lang,
         onSelected: (diff) {
           Navigator.pop(context);
           _executeNewGame(diff);
@@ -580,7 +746,18 @@ class _BoardScreenState extends State<BoardScreen>
       _isAnimatingClear = false;
       _errorHighlights.clear();
       _xpAwardedThisGame = false;
+      _statsUpdatedThisGame = false;
+      _clearedAtLeastOnePairThisPhase = false;
     });
+    // If restarting mid-tutorial, reset hints to fill-phase tracking.
+    _hintAutoTimer?.cancel();
+    _activeHint = _HintType.none;
+    _clearHintStep = 0;
+    if (TutorialManager.isActive && _phaseAComplete) {
+      TutorialManager.advance(TutorialPhase.fillHints);
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _evaluateFillHint());
+    }
     _restartHintTimer();
     _startUITimer();
   }
@@ -599,6 +776,11 @@ class _BoardScreenState extends State<BoardScreen>
         };
         XpService.addXP(xp);
       }
+      // Duel: report final score as winner
+      if (_duelSession != null && !_duelFinishedReported) {
+        _duelFinishedReported = true;
+        DuelService.markFinished(_duelSession!.duelId, game.score);
+      }
       setState(() => _showGameOverOverlay = false);
       _confettiCtrl.play();
       _playWin();
@@ -613,8 +795,13 @@ class _BoardScreenState extends State<BoardScreen>
         };
         XpService.addXP(xp);
       }
+      // Duel: report final score as loser
+      if (_duelSession != null && !_duelFinishedReported) {
+        _duelFinishedReported = true;
+        DuelService.markFinished(_duelSession!.duelId, game.score);
+      }
       setState(() => _showGameOverOverlay = false);
-      Future.delayed(const Duration(milliseconds: 1500), () {
+      Future.delayed(const Duration(milliseconds: 400), () {
         if (mounted &&
             game.phase == Phase.gameOver &&
             ModalRoute.of(context)?.isCurrent == true) {
@@ -622,6 +809,12 @@ class _BoardScreenState extends State<BoardScreen>
           _playLoss();
         }
       });
+    }
+    // Push live score to Firestore whenever game is still ongoing.
+    if (_duelSession != null &&
+        game.phase != Phase.winner &&
+        game.phase != Phase.gameOver) {
+      _syncDuelScore();
     }
   }
 
@@ -654,6 +847,33 @@ class _BoardScreenState extends State<BoardScreen>
     _checkEndState();
   }
 
+  void _showOccupiedSlotWarning() {
+    HapticService.heavy();
+    final isHe = _lang == AppLang.he;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          isHe
+              ? 'לא ניתן להניח קלף על משבצת תפוסה!'
+              : 'You cannot place a card on top of another card!',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
+          ),
+        ),
+        backgroundColor: Colors.red.shade800,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(milliseconds: 1800),
+        margin: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+    );
+  }
+
   Future<void> _flashError(List<int> indices) async {
     setState(() => _errorHighlights.addAll(indices));
     HapticService.heavy();
@@ -675,6 +895,10 @@ class _BoardScreenState extends State<BoardScreen>
     final isFillToClear = previous == Phase.fill && current == Phase.clear;
     final isClearToFill = previous == Phase.clear && current == Phase.fill;
     if (!isFillToClear && !isClearToFill) return;
+    if (isFillToClear) {
+      _clearedAtLeastOnePairThisPhase = false;
+      _onClearPhaseStarted();
+    }
     _triggerPhaseTransitionFeedback(isFillToClear: isFillToClear);
   }
 
@@ -682,10 +906,11 @@ class _BoardScreenState extends State<BoardScreen>
     HapticService.success();
 
     if (!_isMuted) {
-      _phasePlayer.setVolume(isFillToClear ? 0.9 : 0.7);
       _phasePlayer.stop().then((_) {
         if (mounted) {
-          _phasePlayer.play(AssetSource('audio/pop.mp3')).catchError((_) {});
+          _phasePlayer
+              .play(AssetSource('audio/phase_change.mp3'))
+              .catchError((_) {});
         }
       });
     }
@@ -693,7 +918,17 @@ class _BoardScreenState extends State<BoardScreen>
     if (!mounted) return;
     setState(() {
       _showPhasePulse = true;
-      _phaseLabel = isFillToClear ? 'CLEAR PAIRS' : 'PLACE CARDS';
+      if (isFillToClear) {
+        _phaseLabel = _lang == AppLang.he ? 'שלב הניקוי!' : 'CLEAR PHASE!';
+        _phaseSubLabel = _lang == AppLang.he
+            ? 'מצא זוגות שסכומם 11'
+            : 'Find pairs that sum to 11';
+      } else {
+        _phaseLabel = _lang == AppLang.he ? 'שלב המילוי!' : 'FILL PHASE!';
+        _phaseSubLabel = _lang == AppLang.he
+            ? 'הנח קלפים על הלוח'
+            : 'Draw cards to fill the board';
+      }
     });
     _phasePulseCtrl.forward(from: 0).then((_) {
       if (mounted) setState(() => _showPhasePulse = false);
@@ -703,7 +938,7 @@ class _BoardScreenState extends State<BoardScreen>
   // ── Input handlers ────────────────────────────────────────────────────────
 
   void _onTapCell(int i) {
-    if (_showTutorial || _showClearTutorial) return;
+    if (_showWelcomeModals) return;
     _unlockAudio();
     if (_moveMode) {
       if (_moveFromIndex == null) {
@@ -743,6 +978,10 @@ class _BoardScreenState extends State<BoardScreen>
     }
 
     if (game.phase == Phase.fill) {
+      if (game.cells[i] != null && !_moveMode) {
+        _showOccupiedSlotWarning();
+        return;
+      }
       _pushUndo();
       final previousPhase = game.phase;
       final ok = game.tryPlaceAt(i, godMode: _godMode);
@@ -773,25 +1012,10 @@ class _BoardScreenState extends State<BoardScreen>
         _flashError([i]);
       }
 
-      if (game.phase == Phase.clear &&
-          !_hasSeenClearTutorial &&
-          !_showTutorial) {
-        _showClearTutorial = true;
-        _hasSeenClearTutorial = true;
-        _inactivityTimer?.cancel();
-        _hintPulseCtrl.stop();
-        _hintCurrentCard = false;
-        _hintedPair.clear();
-
-        final playerId = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
-        SharedPreferences.getInstance().then(
-          (p) => p.setBool('hasSeenClearTutorialV2_$playerId', true),
-        );
-      }
-
       setState(() {});
       _checkEndState();
       _restartHintTimer();
+      _evaluateFillHint();
     } else if (game.phase == Phase.clear) {
       if (_isAnimatingClear) return;
       setState(() {
@@ -828,13 +1052,16 @@ class _BoardScreenState extends State<BoardScreen>
       setState(() {
         game.performClear();
         _isAnimatingClear = false;
+        _clearedAtLeastOnePairThisPhase = true;
       });
       DailyGoalService.addProgress(GoalType.clearPair, 1);
       HapticService.success();
-      _playPop();
+      final isPhaseChange = previousPhase != game.phase;
+      if (!isPhaseChange) _playPop();
       _maybeTriggerPhaseTransitionFeedback(previousPhase, game.phase);
       _checkEndState();
       _restartHintTimer();
+      _advanceClearHint();
     });
   }
 
@@ -900,13 +1127,7 @@ class _BoardScreenState extends State<BoardScreen>
                   _hintPulseCtrl.stop();
                   _hintCurrentCard = false;
                   _hintedPair.clear();
-                  setState(() {
-                    if (game.phase == Phase.clear) {
-                      _showClearTutorial = true;
-                    } else {
-                      _showTutorial = true;
-                    }
-                  });
+                  setState(() => _showWelcomeModals = true);
                 },
                 icon: const Icon(Icons.help_outline),
                 label: Text(
@@ -1021,6 +1242,59 @@ class _BoardScreenState extends State<BoardScreen>
         },
       ),
     );
+  }
+
+  // Returns the correct store / web link for the current platform.
+  static String get _shareLink {
+    if (kIsWeb) return 'https://royal-frame.netlify.app';
+    if (Platform.isAndroid) {
+      return 'https://play.google.com/store/apps/details?id=com.royalframe.app';
+    }
+    return 'https://royal-frame.netlify.app';
+  }
+
+  /// Captures the current screen, writes it to a temp file, and shares it
+  /// together with [text]. Falls back to text-only on web (browsers rarely
+  /// support Web Share API Level 2 file sharing).
+  Future<void> _captureAndShare(String text) async {
+    try {
+      final imageBytes = await _screenshotCtrl.capture(pixelRatio: 2.0);
+      if (imageBytes == null) throw Exception('capture returned null');
+
+      if (kIsWeb) {
+        // Web Share API Level 2 (files) is not universally supported.
+        // Fall back to text-only share on web.
+        await SharePlus.instance.share(ShareParams(text: text));
+        return;
+      }
+
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/royal_frame_result.png');
+      await file.writeAsBytes(imageBytes);
+
+      await SharePlus.instance.share(
+        ShareParams(
+          text: text,
+          files: [XFile(file.path, mimeType: 'image/png')],
+        ),
+      );
+    } catch (_) {
+      // If screenshot or file I/O fails, share text only.
+      await SharePlus.instance.share(ShareParams(text: text));
+    }
+  }
+
+  Future<void> _shareVictory(int totalScore) async {
+    final int elapsedSecs = (game.endTime ?? DateTime.now())
+        .difference(game.startTime)
+        .inSeconds;
+    final m = (elapsedSecs ~/ 60).toString().padLeft(2, '0');
+    final s = (elapsedSecs % 60).toString().padLeft(2, '0');
+    await _captureAndShare(_l.shareVictory('$m:$s', totalScore, _shareLink));
+  }
+
+  Future<void> _shareGameOver() async {
+    await _captureAndShare(_l.shareGameOver(game.score, _shareLink));
   }
 
   // ── Card widget helpers ───────────────────────────────────────────────────
@@ -1254,18 +1528,7 @@ class _BoardScreenState extends State<BoardScreen>
                 borderRadius: BorderRadius.circular(7),
               ),
             )
-          : Container(
-              width: kCardW,
-              height: kCardH,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: kGoldDark, width: 1.6),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: _gridCardFace(top),
-              ),
-            ),
+          : _playingCard(top),
     );
   }
 
@@ -1318,13 +1581,23 @@ class _BoardScreenState extends State<BoardScreen>
   }) {
     return SizedBox(
       width: kDeckStackW,
-      height: kDeckStackH,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Align(alignment: baseAlign, child: base),
-          Positioned(top: 4, right: 2, child: DeckTag(text: tagText)),
+          DeckTag(text: tagText),
+          const SizedBox(height: 4),
+          SizedBox(
+            width: kDeckStackW,
+            height: kDeckStackH,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Align(alignment: baseAlign, child: base),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -1342,7 +1615,7 @@ class _BoardScreenState extends State<BoardScreen>
     );
 
     var deckTagText =
-        '${_l.labelDeck}\n${game.cardsRemainingDisplay}';
+        '${_l.labelDeck}  ${game.cardsRemainingDisplay}';
     if (peek != null) {
       deckTagText +=
           '\n${_l.peekNext('${peek.label}${suitSymbol(peek.suit)}')}';
@@ -1378,7 +1651,7 @@ class _BoardScreenState extends State<BoardScreen>
             Opacity(opacity: 0.9, child: _playingCard(curr, large: true)),
         childWhenDragging: _playingCard(curr, dimmed: true),
         onDragStarted: () {
-          if (!_showTutorial) setState(() => _draggingCard = curr);
+          if (!_showWelcomeModals) setState(() => _draggingCard = curr);
         },
         onDragEnd: (_) => setState(() => _draggingCard = null),
         onDraggableCanceled: (_, __) =>
@@ -1567,21 +1840,27 @@ class _BoardScreenState extends State<BoardScreen>
             final isHinted = _hintedPair.contains(i);
 
             Widget cellContent = card == null
-                ? Center(
-                    child: Text(
-                      text,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: isDragTarget
-                            ? kDragTargetBorder.withOpacity(0.9)
-                            : (isFrame
-                                ? kSlotFrameBorder.withOpacity(0.85)
-                                : Colors.transparent),
-                        height: 1.15,
-                      ),
-                    ),
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (text.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            text,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: isDragTarget
+                                  ? kDragTargetBorder.withOpacity(0.95)
+                                  : kSlotFrameBorder.withOpacity(0.85),
+                              height: 1.1,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                    ],
                   )
                 : _playingCard(card);
 
@@ -1598,8 +1877,7 @@ class _BoardScreenState extends State<BoardScreen>
 
             final bool isNumberCard = card != null && card.isNumOrAce;
             final bool shouldDim = game.phase == Phase.clear &&
-                !isNumberCard &&
-                !_showClearTutorial;
+                !isNumberCard;
 
             final cellWidget = KeyedSubtree(
               key: _cellKeys[i],
@@ -1630,9 +1908,13 @@ class _BoardScreenState extends State<BoardScreen>
             return DragTarget<CardModel>(
               onWillAcceptWithDetails: (_) => true,
               onAccept: (_) {
-                if (_showTutorial || _showClearTutorial) return;
+                if (_showWelcomeModals) return;
                 _unlockAudio();
                 if (game.phase != Phase.fill || game.current == null) return;
+                if (game.cells[i] != null) {
+                  _showOccupiedSlotWarning();
+                  return;
+                }
 
                 _pushUndo();
                 final previousPhase = game.phase;
@@ -1659,6 +1941,7 @@ class _BoardScreenState extends State<BoardScreen>
                     if (queensOnBoard == 4) BadgeService.unlockQueenBadge();
                   }
                   _checkEndState();
+                  _evaluateFillHint();
                 } else {
                   _undo.removeLast();
                   if (game.isSuddenDeath) {
@@ -1699,7 +1982,7 @@ class _BoardScreenState extends State<BoardScreen>
   @override
   Widget build(BuildContext context) {
     final dragHighlights = _computeDragHighlights();
-    const double deckRowH = 110.0;
+    const double deckRowH = 150.0;
     const double innerGap = 6.0;
 
     final int elapsedSecs = (game.endTime ?? DateTime.now())
@@ -1723,12 +2006,14 @@ class _BoardScreenState extends State<BoardScreen>
       child: Directionality(
         textDirection:
             _lang == AppLang.he ? TextDirection.rtl : TextDirection.ltr,
-        child: Scaffold(
+        child: Screenshot(
+          controller: _screenshotCtrl,
+          child: Scaffold(
           backgroundColor: XpService.equippedBoardColor,
           appBar: AppBar(
             automaticallyImplyLeading: false,
             backgroundColor: XpService.equippedBoardColorLight,
-            titleSpacing: 6,
+            titleSpacing: 0,
             title: Row(
               children: [
                 // Title + difficulty badge
@@ -1785,7 +2070,7 @@ class _BoardScreenState extends State<BoardScreen>
                     ),
                   ],
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
 
                 // Score + timer bar
                 Expanded(
@@ -1837,10 +2122,16 @@ class _BoardScreenState extends State<BoardScreen>
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 2),
 
-                // Action buttons
-                Row(
+                // Action buttons — Flexible lets this section yield space
+                // to the score/timer Expanded; FittedBox scales icons down
+                // proportionally when the screen is narrow.
+                Flexible(
+                  child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _buildCompactIcon(Icons.home, kGold, () {
@@ -1884,16 +2175,16 @@ class _BoardScreenState extends State<BoardScreen>
                         );
                       }
                     }),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 2),
                     _buildCompactIcon(
                       Icons.undo,
                       _undo.isNotEmpty ? kGold : kGoldDark,
                       _undo.isNotEmpty ? _undoAction : null,
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 2),
                     _buildCompactIcon(
                         Icons.refresh, kGold, _openDifficultyPicker),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 2),
 
                     _buildCompactIcon(
                       DailyGoalService.current?.isCompleted == true
@@ -1904,7 +2195,7 @@ class _BoardScreenState extends State<BoardScreen>
                           : kGold,
                       _showDailyGoal,
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 2),
 
                     SizedBox(
                       width: 32,
@@ -1928,14 +2219,17 @@ class _BoardScreenState extends State<BoardScreen>
                             _showDifficultyPicker();
                           else if (value == 'cosmetics')
                             _showThemeGallery();
-                          else if (value == 'lang')
-                            setState(() => _lang = _lang == AppLang.he
-                                ? AppLang.en
-                                : AppLang.he);
+                          else if (value == 'lang') {
+                            final newLang = _lang == AppLang.he ? AppLang.en : AppLang.he;
+                            setState(() => _lang = newLang);
+                            L.saveLang(newLang);
+                          }
                           else if (value == 'mute')
                             _toggleMute();
                           else if (value == 'haptic')
                             _toggleHaptic();
+                          else if (value == 'optional_clearing')
+                            _toggleOptionalClearing();
                         },
                         itemBuilder: (context) => [
                           PopupMenuItem(
@@ -2017,11 +2311,37 @@ class _BoardScreenState extends State<BoardScreen>
                                       color: kGoldLight, fontSize: 14)),
                             ]),
                           ),
+                          PopupMenuItem(
+                            value: 'optional_clearing',
+                            child: Row(children: [
+                              Icon(
+                                _optionalClearing
+                                    ? Icons.skip_next
+                                    : Icons.skip_next_outlined,
+                                color: kGold,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                _optionalClearing
+                                    ? (_lang == AppLang.he
+                                        ? 'פינוי חופשי: פועל'
+                                        : 'Free Clearing: On')
+                                    : (_lang == AppLang.he
+                                        ? 'פינוי חופשי: כבוי'
+                                        : 'Free Clearing: Off'),
+                                style: const TextStyle(
+                                    color: kGoldLight, fontSize: 14),
+                              ),
+                            ]),
+                          ),
                         ],
                       ),
                     ),
                   ],
-                ),
+                  ),  // Row
+                ),    // FittedBox
+                ),    // Flexible
               ],
             ),
           ),
@@ -2060,6 +2380,72 @@ class _BoardScreenState extends State<BoardScreen>
                           ),
                         ),
 
+                      if (_optionalClearing &&
+                          game.phase == Phase.clear &&
+                          game.hasAnyPairFor11 &&
+                          _clearedAtLeastOnePairThisPhase &&
+                          !_isAnimatingClear &&
+                          true)
+                        Container(
+                          color: kBurgundy.withOpacity(0.85),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 4, horizontal: 12),
+                          child: Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                _lang == AppLang.he
+                                    ? 'פנה זוגות של 11'
+                                    : 'Clear pairs summing to 11',
+                                style: const TextStyle(
+                                  color: kGoldLight,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              GestureDetector(
+                                onTap: () {
+                                  _pushUndo();
+                                  final ok = game.forceResumeFill();
+                                  if (ok) {
+                                    setState(() {});
+                                    _maybeTriggerPhaseTransitionFeedback(
+                                        Phase.clear, game.phase);
+                                    _checkEndState();
+                                    _restartHintTimer();
+                                  } else {
+                                    _undo.removeLast();
+                                  }
+                                },
+                                child: Container(
+                                  padding:
+                                      const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: kGoldDark.withOpacity(0.3),
+                                    borderRadius:
+                                        BorderRadius.circular(6),
+                                    border: Border.all(
+                                        color: kGoldDark, width: 1),
+                                  ),
+                                  child: Text(
+                                    _lang == AppLang.he ? 'דלג' : 'Skip',
+                                    style: const TextStyle(
+                                      color: kGold,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+
                       Expanded(
                         child: Padding(
                           padding: const EdgeInsets.only(
@@ -2089,7 +2475,7 @@ class _BoardScreenState extends State<BoardScreen>
                                     curve: Curves.easeInOut,
                                     opacity: (game.phase ==
                                                 Phase.clear &&
-                                            !_showClearTutorial)
+                                            false)
                                         ? 0.35
                                         : 1.0,
                                     child: SizedBox(
@@ -2122,86 +2508,156 @@ class _BoardScreenState extends State<BoardScreen>
                       _showGameOverOverlay)
                     _buildGameOverOverlay(),
 
-                  if (_showTutorial)
+                  // Duel HUD — live opponent score + result banner
+                  if (_duelSession != null)
+                    _buildDuelHud(),
+
+                  // Floating contextual hints (Phase B & C) — non-blocking,
+                  // anchored top-left so they never cover the grid center.
+                  if (_activeHint != _HintType.none)
+                    Positioned(
+                      top: 16,
+                      left: 16,
+                      child: FloatingHint(
+                        key: ValueKey(_activeHint),
+                        message: _hintMessage,
+                      ),
+                    ),
+
+                  // Welcome modals (Phase A) — blocking, always on top
+                  if (_showWelcomeModals)
                     TutorialOverlay(
                       lang: _lang,
                       deckRowKey: _deckRowKey,
                       gridKey: _gridKey,
                       cellKeys: _cellKeys,
-                      isClearPhase: false,
                       onFinish: ({bool skipped = false}) {
-                        setState(() => _showTutorial = false);
+                        setState(() {
+                          _showWelcomeModals = false;
+                          _phaseAComplete = true;
+                        });
+                        TutorialManager.advance(TutorialPhase.fillHints);
+                        WidgetsBinding.instance.addPostFrameCallback(
+                          (_) => _evaluateFillHint(),
+                        );
                         _restartHintTimer();
                       },
                     ),
 
-                  if (_showClearTutorial)
-                    TutorialOverlay(
-                      lang: _lang,
-                      deckRowKey: _deckRowKey,
-                      gridKey: _gridKey,
-                      cellKeys: _cellKeys,
-                      isClearPhase: true,
-                      onFinish: ({bool skipped = false}) {
-                        setState(() => _showClearTutorial = false);
-                        _restartHintTimer();
-                      },
-                    ),
-
-                  // Phase-transition pulse overlay
+                  // Phase-transition banner overlay
                   if (_showPhasePulse)
                     IgnorePointer(
                       child: AnimatedBuilder(
                         animation: _phasePulseCtrl,
-                        builder: (context, _) {
+                        builder: (context, child) {
                           final t = _phasePulseCtrl.value;
-                          final opacity = (t < 0.4
-                                  ? (t / 0.4)
-                                  : (1.0 - (t - 0.4) / 0.6))
-                              .clamp(0.0, 1.0);
-                          return Stack(
-                            fit: StackFit.expand,
+                          // Fade in 0→0.12, hold 0.12→0.72, fade out 0.72→1.0
+                          final double opacity;
+                          if (t < 0.12) {
+                            opacity = t / 0.12;
+                          } else if (t < 0.72) {
+                            opacity = 1.0;
+                          } else {
+                            opacity = 1.0 - (t - 0.72) / 0.28;
+                          }
+                          // Elastic scale-in over first 16%, then hold at 1.0
+                          final double scale;
+                          if (t < 0.16) {
+                            final tn = (t / 0.16).clamp(0.0, 1.0);
+                            scale = 0.62 +
+                                0.38 *
+                                    Curves.elasticOut.transform(tn);
+                          } else {
+                            scale = 1.0;
+                          }
+                          return Center(
+                            child: Opacity(
+                              opacity: opacity.clamp(0.0, 1.0),
+                              child: Transform.scale(
+                                scale: scale,
+                                child: child,
+                              ),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          constraints:
+                              const BoxConstraints(maxWidth: 320),
+                          margin: const EdgeInsets.symmetric(
+                              horizontal: 28),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 28, vertical: 20),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.black.withOpacity(0.30),
+                                Colors.black.withOpacity(0.22),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                                color: kGold.withOpacity(0.75),
+                                width: 1.8),
+                            boxShadow: [
+                              BoxShadow(
+                                color: kGold.withOpacity(0.35),
+                                blurRadius: 36,
+                                spreadRadius: 4,
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Opacity(
-                                opacity: opacity * 0.28,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    gradient: RadialGradient(
-                                      center: Alignment.center,
-                                      radius: 0.85,
-                                      colors: [
-                                        kRoyalGoldBorder
-                                            .withOpacity(0.0),
-                                        kRoyalGoldBorder
-                                            .withOpacity(0.7),
-                                      ],
+                              Text(
+                                _phaseLabel,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: kGold,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 3.5,
+                                  shadows: [
+                                    Shadow(
+                                      color: kGold,
+                                      blurRadius: 22,
                                     ),
-                                  ),
+                                    Shadow(
+                                      color: Colors.black,
+                                      blurRadius: 10,
+                                      offset: Offset(0, 2),
+                                    ),
+                                    Shadow(
+                                      color: Colors.black,
+                                      blurRadius: 3,
+                                      offset: Offset(0, 1),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              Opacity(
-                                opacity: opacity,
-                                child: Center(
-                                  child: Text(
-                                    _phaseLabel,
-                                    style: const TextStyle(
-                                      color: kGold,
-                                      fontSize: 32,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 4,
-                                      shadows: [
-                                        Shadow(
-                                          color: Colors.black,
-                                          blurRadius: 12,
-                                        ),
-                                      ],
+                              const SizedBox(height: 8),
+                              Text(
+                                _phaseSubLabel,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color:
+                                      Colors.white.withOpacity(0.90),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  letterSpacing: 0.4,
+                                  shadows: const [
+                                    Shadow(
+                                      color: Colors.black,
+                                      blurRadius: 8,
                                     ),
-                                  ),
+                                  ],
                                 ),
                               ),
                             ],
-                          );
-                        },
+                          ),
+                        ),
                       ),
                     ),
 
@@ -2228,112 +2684,140 @@ class _BoardScreenState extends State<BoardScreen>
               ),
             ),
           ),
+          ),      // Screenshot
         ),
       ),
     );
   }
 
-  Widget _buildDebugPanel() {
-    return Container(
-      color: kBurgundyLight.withOpacity(0.92),
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(children: [
-            Expanded(
-                child: _miniCard(
-                    _l.dbgPhase, game.phase.name)),
-            Expanded(
-                child: _miniCard(
-                    _l.dbgCurrent,
-                    game.phase == Phase.clear
-                        ? '—'
-                        : (game.current?.label ?? '—'))),
-            Expanded(
-                child: _miniCard(_l.dbgDeck,
-                    game.cardsRemainingDisplay.toString())),
-            Expanded(
-                child: _miniCard(_l.dbgRoyals,
-                    '${game.royalsPlacedCorrect}/${game.totalRoyalSlots}')),
-          ]),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 4, 4, 6),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: game.royalsProgress.clamp(0.0, 1.0),
-                minHeight: 6,
-                backgroundColor: kBurgundy,
-                color: kGold,
-              ),
-            ),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Row(mainAxisSize: MainAxisSize.min, children: [
+  Widget _buildDuelHud() {
+    final session = _duelSession;
+    if (session == null) return const SizedBox.shrink();
+
+    final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final isHost = session.hostUid == myUid;
+    final myScore = game.score;
+    final opponentName = isHost
+        ? (session.guestName ?? 'Opponent')
+        : session.hostName;
+
+    // Result banner when duel is finished
+    if (session.isFinished) {
+      final iWon = session.winnerId == myUid;
+      return Positioned(
+        top: 0,
+        left: 0,
+        right: 0,
+        child: IgnorePointer(
+          child: Container(
+            color: iWon
+                ? kGold.withOpacity(0.88)
+                : Colors.redAccent.withOpacity(0.82),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
                 Text(
-                  _l.dbgGodMode,
+                  iWon ? '  You Win the Duel!' : '  Opponent Wins the Duel',
                   style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: _godMode ? kGoldLight : Colors.white38,
+                    color: iWon ? Colors.black : Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.2,
                   ),
                 ),
-                const SizedBox(width: 6),
-                Switch(
-                  value: _godMode,
-                  activeColor: kGold,
-                  onChanged: (v) => setState(() => _godMode = v),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Live score HUD strip at the bottom
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: Container(
+          color: Colors.black.withOpacity(0.65),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Row(
+            children: [
+              // My score
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'YOU',
+                      style: TextStyle(
+                        color: kGoldLight,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    Text(
+                      '$myScore',
+                      style: const TextStyle(
+                        color: kGold,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
                 ),
-              ]),
-              const SizedBox(width: 16),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF2A5C1A),
-                  foregroundColor: kGoldLight,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 6),
-                  textStyle: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              // VS divider
+              Container(
+                width: 1,
+                height: 32,
+                color: kGoldDark.withOpacity(0.6),
+                margin: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              // Opponent score
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      opponentName.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white60,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    Text(
+                      '$_opponentScore',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
                 ),
-                onPressed: () {
-                  _pushUndo();
-                  setState(() => game.applyInstantWin());
-                  _checkEndState();
-                },
-                child: Text(_l.dbgInstantWin),
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _miniCard(String title, String value) => Card(
-        color: kBurgundy,
-        margin: const EdgeInsets.symmetric(horizontal: 3),
-        child: Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
-          child: Column(children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 10,
-                    color: kGoldDark,
-                    fontWeight: FontWeight.w600)),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 12, color: kGoldLight)),
-          ]),
-        ),
-      );
-
   Widget _buildWinnerOverlay() {
-    DbService().updatePlayerStats(game.score, true);
-    DailyGoalService.addProgress(GoalType.scorePoints, game.score);
+    if (!_statsUpdatedThisGame) {
+      _statsUpdatedThisGame = true;
+      DbService().updatePlayerStats(game.score, true);
+      DailyGoalService.addProgress(GoalType.scorePoints, game.score);
+    }
 
     final int baseScore = game.score;
     const int winBonus = 1000;
@@ -2475,6 +2959,22 @@ class _BoardScreenState extends State<BoardScreen>
                 ),
               ),
 
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kGoldLight,
+                  side: const BorderSide(color: kGold, width: 1.5),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 20, vertical: 10),
+                ),
+                onPressed: () => _shareVictory(totalScore),
+                icon: const Icon(Icons.share, size: 18),
+                label: Text(
+                  _l.shareVictoryBtn,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 10),
+
               FilledButton.icon(
                 onPressed: _restartCurrentGame,
                 icon: const Icon(Icons.refresh),
@@ -2494,8 +2994,8 @@ class _BoardScreenState extends State<BoardScreen>
       borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding:
-            const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-        child: Icon(icon, size: 24, color: color),
+            const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Icon(icon, size: 22, color: color),
       ),
     );
   }
@@ -2524,8 +3024,11 @@ class _BoardScreenState extends State<BoardScreen>
   }
 
   Widget _buildGameOverOverlay() {
-    DbService().updatePlayerStats(game.score, false);
-    DailyGoalService.addProgress(GoalType.scorePoints, game.score);
+    if (!_statsUpdatedThisGame) {
+      _statsUpdatedThisGame = true;
+      DbService().updatePlayerStats(game.score, false);
+      DailyGoalService.addProgress(GoalType.scorePoints, game.score);
+    }
     final deckLeft = game.cardsRemainingDisplay;
     const textShadow = [
       Shadow(color: Colors.black, blurRadius: 8, offset: Offset(0, 2)),
@@ -2636,6 +3139,21 @@ class _BoardScreenState extends State<BoardScreen>
                 ),
               ),
 
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kGoldLight,
+                  side: const BorderSide(color: kGoldDark, width: 1.5),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 20, vertical: 10),
+                ),
+                onPressed: _shareGameOver,
+                icon: const Icon(Icons.share, size: 18),
+                label: Text(
+                  _l.shareScoreBtn,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 8),
               FilledButton.icon(
                 style: FilledButton.styleFrom(
                     backgroundColor: kBlockedBorder),
@@ -2657,10 +3175,12 @@ class _BoardScreenState extends State<BoardScreen>
 class _DifficultyPickerDialog extends StatefulWidget {
   final GameDifficulty current;
   final void Function(GameDifficulty) onSelected;
+  final AppLang lang;
 
   const _DifficultyPickerDialog({
     required this.current,
     required this.onSelected,
+    required this.lang,
   });
 
   @override
@@ -2678,32 +3198,35 @@ class _DifficultyPickerDialogState
     _selected = widget.current;
   }
 
-  static const _data = [
-    (
-      diff: GameDifficulty.medium,
-      emoji: '☀️',
-      name: 'Medium',
-      subtitle: 'No Kings — 8 dump slots.\nScore ×0.5',
-      accentLight: Color(0xFF4CAF50),
-      accentDark: Color(0xFF2E7D32),
-    ),
-    (
-      diff: GameDifficulty.hard,
-      emoji: '⚔️',
-      name: 'Hard',
-      subtitle: 'Standard rules.\nScore ×1.0',
-      accentLight: Color(0xFFD4AF37),
-      accentDark: Color(0xFF9A7B1A),
-    ),
-    (
-      diff: GameDifficulty.extreme,
-      emoji: '💣',
-      name: 'Extreme',
-      subtitle: '3-min bomb + Sudden Death.\nScore ×2.0',
-      accentLight: Color(0xFFFF5252),
-      accentDark: Color(0xFFB71C1C),
-    ),
-  ];
+  List<({GameDifficulty diff, String emoji, String name, String subtitle, Color accentLight, Color accentDark})> get _data {
+    final isHe = widget.lang == AppLang.he;
+    return [
+      (
+        diff: GameDifficulty.medium,
+        emoji: '☀️',
+        name: isHe ? 'בינוני' : 'Medium',
+        subtitle: isHe ? 'ללא מלכים — 8 תאי זבל.\nניקוד ×0.5' : 'No Kings — 8 dump slots.\nScore ×0.5',
+        accentLight: const Color(0xFF4CAF50),
+        accentDark: const Color(0xFF2E7D32),
+      ),
+      (
+        diff: GameDifficulty.hard,
+        emoji: '⚔️',
+        name: isHe ? 'קשה' : 'Hard',
+        subtitle: isHe ? 'חוקים רגילים.\nניקוד ×1.0' : 'Standard rules.\nScore ×1.0',
+        accentLight: const Color(0xFFD4AF37),
+        accentDark: const Color(0xFF9A7B1A),
+      ),
+      (
+        diff: GameDifficulty.extreme,
+        emoji: '💣',
+        name: isHe ? 'קיצוני' : 'Extreme',
+        subtitle: isHe ? 'פצצה 3 דקות + מוות פתאומי.\nניקוד ×2.0' : '3-min bomb + Sudden Death.\nScore ×2.0',
+        accentLight: const Color(0xFFFF5252),
+        accentDark: const Color(0xFFB71C1C),
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2742,10 +3265,10 @@ class _DifficultyPickerDialogState
                 children: [
                   const Icon(Icons.tune, color: kGold, size: 22),
                   const SizedBox(width: 10),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Choose Difficulty',
-                      style: TextStyle(
+                      widget.lang == AppLang.he ? 'בחר רמת קושי' : 'Choose Difficulty',
+                      style: const TextStyle(
                         color: kGold,
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
@@ -2889,7 +3412,7 @@ class _DifficultyPickerDialogState
                       widget.onSelected(_selected),
                   icon: const Icon(Icons.play_arrow_rounded,
                       size: 22),
-                  label: const Text('START GAME'),
+                  label: Text(widget.lang == AppLang.he ? 'התחל משחק' : 'START GAME'),
                 ),
               ),
             ),
@@ -3212,22 +3735,22 @@ class DeckTag extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding:
-          const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+          const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: kBurgundy.withOpacity(0.82),
-        borderRadius: BorderRadius.circular(5),
+        color: kBurgundy.withOpacity(0.90),
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(
-            color: kGoldDark.withOpacity(0.6), width: 0.8),
+            color: kGoldDark.withOpacity(0.8), width: 1.0),
       ),
       child: Text(
         text,
-        textAlign: TextAlign.right,
+        textAlign: TextAlign.center,
         style: const TextStyle(
           color: kGoldLight,
-          fontSize: 9,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.6,
-          height: 1.25,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+          height: 1.3,
         ),
       ),
     );

@@ -22,9 +22,12 @@ class DbService {
 
   // ── Write helpers ──────────────────────────────────────────────────────────
 
+  static const int _kMaxScore = 500000;
+
   Future<void> updatePlayerStats(int newScore, bool isWin) async {
     final user = _auth.currentUser;
     if (user == null) return;
+    if (newScore < 0 || newScore > _kMaxScore) return;
 
     final docRef = _db.collection('players').doc(user.uid);
 
@@ -59,10 +62,12 @@ class DbService {
 
   /// Upserts only the displayName field — used after phone-auth name capture.
   Future<void> updateDisplayName(String uid, String displayName) async {
+    final sanitized = displayName.trim();
+    if (sanitized.isEmpty || sanitized.length > 30) return;
     await _db
         .collection('players')
         .doc(uid)
-        .set({'displayName': displayName}, SetOptions(merge: true));
+        .set({'displayName': sanitized}, SetOptions(merge: true));
   }
 
   // ── Read helpers ───────────────────────────────────────────────────────────

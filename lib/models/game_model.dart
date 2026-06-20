@@ -512,6 +512,22 @@ class GameState {
     return true;
   }
 
+  /// Forces a return to fill phase even when pairs remain (optional clearing).
+  /// Returns false if there is no space or no cards left to place.
+  bool forceResumeFill() {
+    if (phase != Phase.clear) return false;
+    if (!cells.any((c) => c == null)) return false;
+    if (current == null && drawPile.isEmpty) return false;
+    selectedForClear.clear();
+    phase = Phase.fill;
+    if (current == null && drawPile.isNotEmpty) {
+      current = drawPile.removeLast();
+      totalCardsDrawn++;
+    }
+    _evaluatePhaseAfterChange();
+    return true;
+  }
+
   bool activatePeek() {
     if (!lifelinePeekAvailable || drawPile.isEmpty) return false;
     lifelinePeekAvailable = false;
