@@ -114,6 +114,9 @@ class _BoardScreenState extends State<BoardScreen>
   // Phase-transition pulse
   late AnimationController _phasePulseCtrl;
   bool _showPhasePulse = false;
+  // Suppresses pop.mp3 for the entire duration of the phase-change banner so
+  // the two sounds never overlap.
+  bool _phaseTransitionBlocking = false;
   String _phaseLabel = '';
   String _phaseSubLabel = '';
 
@@ -236,7 +239,11 @@ class _BoardScreenState extends State<BoardScreen>
 
   Future<void> _syncDuelScore() async {
     if (_duelSession == null) return;
-    await DuelService.syncScore(_duelSession!.duelId, game.score);
+    try {
+      await DuelService.syncScore(_duelSession!.duelId, game.score);
+    } catch (e) {
+      debugPrint('DuelService.syncScore failed: $e');
+    }
   }
 
   Future<void> _loadSavedDifficulty() async {
@@ -642,7 +649,7 @@ class _BoardScreenState extends State<BoardScreen>
   }
 
   Future<void> _playPop() async {
-    if (_isMuted || !mounted) return;
+    if (_isMuted || !mounted || _phaseTransitionBlocking) return;
     try {
       await _popPlayer.setVolume(1.0);
       await _popPlayer.seek(Duration.zero);
@@ -778,8 +785,16 @@ class _BoardScreenState extends State<BoardScreen>
       }
       // Duel: report final score as winner
       if (_duelSession != null && !_duelFinishedReported) {
-        _duelFinishedReported = true;
-        DuelService.markFinished(_duelSession!.duelId, game.score);
+        final duelId = _duelSession!.duelId;
+        final score = game.score;
+        () async {
+          try {
+            await DuelService.markFinished(duelId, score);
+            if (mounted) _duelFinishedReported = true;
+          } catch (e) {
+            debugPrint('DuelService.markFinished (winner) failed: $e');
+          }
+        }();
       }
       setState(() => _showGameOverOverlay = false);
       _confettiCtrl.play();
@@ -797,8 +812,16 @@ class _BoardScreenState extends State<BoardScreen>
       }
       // Duel: report final score as loser
       if (_duelSession != null && !_duelFinishedReported) {
-        _duelFinishedReported = true;
-        DuelService.markFinished(_duelSession!.duelId, game.score);
+        final duelId = _duelSession!.duelId;
+        final score = game.score;
+        () async {
+          try {
+            await DuelService.markFinished(duelId, score);
+            if (mounted) _duelFinishedReported = true;
+          } catch (e) {
+            debugPrint('DuelService.markFinished (loser) failed: $e');
+          }
+        }();
       }
       setState(() => _showGameOverOverlay = false);
       Future.delayed(const Duration(milliseconds: 400), () {
@@ -899,7 +922,10 @@ class _BoardScreenState extends State<BoardScreen>
       _clearedAtLeastOnePairThisPhase = false;
       _onClearPhaseStarted();
     }
-    _triggerPhaseTransitionFeedback(isFillToClear: isFillToClear);
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      _triggerPhaseTransitionFeedback(isFillToClear: isFillToClear);
+    });
   }
 
   void _triggerPhaseTransitionFeedback({required bool isFillToClear}) {
@@ -907,12 +933,15 @@ class _BoardScreenState extends State<BoardScreen>
 
     if (!_isMuted) {
       _phasePlayer.stop().then((_) {
-        if (mounted) {
-          _phasePlayer
-              .play(AssetSource('audio/phase_change.mp3'))
-              .catchError((_) {});
-        }
-      });
+        if (!mounted) return;
+        _phasePlayer.setVolume(1.0).then((_) {
+          if (!mounted) return;
+          _phasePlayer.seek(Duration.zero).then((_) {
+            if (!mounted) return;
+            _phasePlayer.resume().catchError((_) {});
+          });
+        });
+      }).catchError((_) {});
     }
 
     if (!mounted) return;
@@ -930,8 +959,12 @@ class _BoardScreenState extends State<BoardScreen>
             : 'Draw cards to fill the board';
       }
     });
+    _phaseTransitionBlocking = true;
     _phasePulseCtrl.forward(from: 0).then((_) {
-      if (mounted) setState(() => _showPhasePulse = false);
+      if (mounted) {
+        setState(() => _showPhasePulse = false);
+        _phaseTransitionBlocking = false;
+      }
     });
   }
 
@@ -988,7 +1021,8 @@ class _BoardScreenState extends State<BoardScreen>
 
       if (ok) {
         HapticService.light();
-        _playPlace();
+        final phaseWillChange = previousPhase != game.phase;
+        if (!phaseWillChange) _playPlace();
         _maybeTriggerPhaseTransitionFeedback(previousPhase, game.phase);
 
         final placedCard = game.cells[i];
@@ -1923,9 +1957,9 @@ class _BoardScreenState extends State<BoardScreen>
                 if (ok) {
                   setState(() {});
                   HapticService.light();
-                  _playPlace();
-                  _maybeTriggerPhaseTransitionFeedback(
-                      previousPhase, game.phase);
+                  final phaseWillChange = previousPhase != game.phase;
+                  if (!phaseWillChange) _playPlace();
+                  _maybeTriggerPhaseTransitionFeedback(previousPhase, game.phase);
                   final placedCard = game.cells[i];
                   if (placedCard != null &&
                       (placedCard.isK ||
@@ -2087,7 +2121,7 @@ class _BoardScreenState extends State<BoardScreen>
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Icon(Icons.emoji_events,
-                            size: 14, color: kGold),
+                            size: 18, color: kGold),
                         const SizedBox(width: 4),
                         Text(
                           '${game.score}',
@@ -2102,7 +2136,7 @@ class _BoardScreenState extends State<BoardScreen>
                           isCountdown
                               ? Icons.timer_outlined
                               : Icons.timer,
-                          size: 14,
+                          size: 18,
                           color: timerCritical
                               ? Colors.redAccent
                               : kGoldLight,
@@ -2186,24 +2220,18 @@ class _BoardScreenState extends State<BoardScreen>
                         Icons.refresh, kGold, _openDifficultyPicker),
                     const SizedBox(width: 2),
 
-                    _buildCompactIcon(
-                      DailyGoalService.current?.isCompleted == true
-                          ? Icons.check_circle
-                          : Icons.flag,
-                      DailyGoalService.current?.isCompleted == true
-                          ? Colors.greenAccent
-                          : kGold,
-                      _showDailyGoal,
-                    ),
+                    DailyGoalService.current?.isCompleted == true
+                        ? _buildDailyGoalCompletedBadge()
+                        : _buildCompactIcon(Icons.flag, kGold, _showDailyGoal),
                     const SizedBox(width: 2),
 
                     SizedBox(
-                      width: 32,
+                      width: 38,
                       child: PopupMenuButton<String>(
                         icon: const Icon(
                           Icons.more_vert,
                           color: kGold,
-                          size: 24,
+                          size: 28,
                         ),
                         padding: EdgeInsets.zero,
                         color: kBurgundyLight,
@@ -2994,8 +3022,43 @@ class _BoardScreenState extends State<BoardScreen>
       borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding:
-            const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-        child: Icon(icon, size: 22, color: color),
+            const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+        child: Icon(icon, size: 26, color: color),
+      ),
+    );
+  }
+
+  /// Fixed-size golden badge shown in the AppBar when the daily goal is done.
+  /// Constrained to the same footprint as _buildCompactIcon so it never
+  /// overflows the AppBar row.
+  Widget _buildDailyGoalCompletedBadge() {
+    return InkWell(
+      onTap: _showDailyGoal,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: SizedBox(
+          width: 26,
+          height: 26,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const RadialGradient(
+                colors: [Color(0xFFFFD700), Color(0xFFB8860B)],
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x88FFD700),
+                  blurRadius: 6,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: const Center(
+              child: Icon(Icons.check, size: 16, color: Color(0xFF3A0D15)),
+            ),
+          ),
+        ),
       ),
     );
   }

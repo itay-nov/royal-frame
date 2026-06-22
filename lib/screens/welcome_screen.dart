@@ -89,7 +89,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   void _startGame() async {
     final name = _nameCtrl.text.trim();
-    if (name.isEmpty) return;
+    if (name.isEmpty) {
+      _showError('Please enter a name');
+      return;
+    }
 
     setState(() => _isLoading = true);
 

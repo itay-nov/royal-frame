@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/player_model.dart';
 import 'auth_service.dart';
 
@@ -31,43 +32,54 @@ class DbService {
 
     final docRef = _db.collection('players').doc(user.uid);
 
-    await _db.runTransaction((transaction) async {
-      final snapshot = await transaction.get(docRef);
+    try {
+      await _db.runTransaction((transaction) async {
+        final snapshot = await transaction.get(docRef);
 
-      if (!snapshot.exists) {
-        transaction.set(
-          docRef,
-          PlayerModel(
-            uid: user.uid,
-            displayName: user.displayName ?? 'Player',
-            highScore: newScore,
-            totalScore: newScore,
-            wins: isWin ? 1 : 0,
-            totalGames: 1,
-            lastUpdated: DateTime.now(),
-          ).toMap(),
-        );
-      } else {
-        final data = PlayerModel.fromMap(snapshot.data()!);
-        transaction.update(docRef, {
-          'highScore': newScore > data.highScore ? newScore : data.highScore,
-          'totalScore': data.totalScore + newScore,
-          'wins': isWin ? data.wins + 1 : data.wins,
-          'totalGames': data.totalGames + 1,
-          'lastUpdated': DateTime.now(),
-        });
-      }
-    });
+        if (!snapshot.exists) {
+          transaction.set(
+            docRef,
+            PlayerModel(
+              uid: user.uid,
+              displayName: user.displayName ?? 'Player',
+              highScore: newScore,
+              totalScore: newScore,
+              wins: isWin ? 1 : 0,
+              totalGames: 1,
+              lastUpdated: DateTime.now(),
+            ).toMap(),
+          );
+        } else {
+          final data = PlayerModel.fromMap(snapshot.data()!);
+          transaction.update(docRef, {
+            'highScore': newScore > data.highScore ? newScore : data.highScore,
+            'totalScore': data.totalScore + newScore,
+            'wins': isWin ? data.wins + 1 : data.wins,
+            'totalGames': data.totalGames + 1,
+            'lastUpdated': DateTime.now(),
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('updatePlayerStats failed: $e');
+    }
   }
 
-  /// Upserts only the displayName field — used after phone-auth name capture.
+  /// Updates only the displayName field on an existing player document.
+  /// If the document does not exist yet (user has not played a game),
+  /// the write is silently skipped — the name will be persisted by
+  /// updatePlayerStats when they complete their first game.
   Future<void> updateDisplayName(String uid, String displayName) async {
     final sanitized = displayName.trim();
     if (sanitized.isEmpty || sanitized.length > 30) return;
-    await _db
-        .collection('players')
-        .doc(uid)
-        .set({'displayName': sanitized}, SetOptions(merge: true));
+    try {
+      await _db
+          .collection('players')
+          .doc(uid)
+          .update({'displayName': sanitized});
+    } catch (_) {
+      // Document doesn't exist yet — no-op is intentional.
+    }
   }
 
   // ── Read helpers ───────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import '../services/db_service.dart';
 import '../services/auth_service.dart';
 import '../services/haptic_service.dart';
 import '../services/streak_service.dart';
+import '../services/tutorial_manager.dart';
 import '../models/player_model.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -41,6 +42,9 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     _loadSavedLang();
     HapticService.load();
     _loadStreak();
+    // Sync tutorial status from Firestore so veteran users never re-see the
+    // tutorial after a fresh install or local-storage wipe.
+    TutorialManager.syncFromFirestore();
   }
 
   Future<void> _loadStreak() async {
@@ -213,15 +217,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                 ),
               ),
             const Spacer(),
-            IconButton(
-              tooltip: _lang == AppLang.he ? 'English' : 'עברית',
-              icon: const Icon(Icons.language, color: kGold),
-              onPressed: () {
-                final newLang = _lang == AppLang.he ? AppLang.en : AppLang.he;
-                setState(() => _lang = newLang);
-                L.saveLang(newLang);
-              },
-            ),
+            _buildLangToggle(),
             IconButton(
               tooltip: _isMuted ? 'Unmute' : 'Mute',
               icon: Icon(
@@ -327,6 +323,36 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLangToggle() {
+    final targetLabel = _lang == AppLang.he ? 'English' : 'עברית';
+    return OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        backgroundColor: Colors.black.withOpacity(0.35),
+        foregroundColor: kGold,
+        side: const BorderSide(color: kGold, width: 1.5),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      ),
+      onPressed: () {
+        final newLang = _lang == AppLang.he ? AppLang.en : AppLang.he;
+        setState(() => _lang = newLang);
+        L.saveLang(newLang);
+      },
+      icon: const Icon(Icons.language, size: 18, color: kGold),
+      label: Text(
+        targetLabel,
+        style: const TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          color: kGold,
+          letterSpacing: 0.3,
         ),
       ),
     );

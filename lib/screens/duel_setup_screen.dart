@@ -113,7 +113,7 @@ class _HostTabState extends State<_HostTab> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        _error = e.toString().replaceFirst('Exception: ', '');
         _creating = false;
       });
     }

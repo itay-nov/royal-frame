@@ -25,7 +25,7 @@ void main() async {
     // reaches reCAPTCHA, so no real token exchange happens and no 403 is thrown.
     // The SDK prints the debug UUID to the DevTools console automatically.
     // Register that UUID in: Firebase Console → App Check → Manage debug tokens.
-    webProvider: ReCaptchaV3Provider('6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI'),
+    webProvider: ReCaptchaV3Provider('6LfKGSctAAAAAJ6Lk2FwIHMlemfc_BhiPAHjeXt9'),
   );
 
   final prefs = await SharedPreferences.getInstance();
