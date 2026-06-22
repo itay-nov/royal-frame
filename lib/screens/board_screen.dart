@@ -16,6 +16,7 @@ import '../models/game_model.dart';
 import '../utils/localization.dart';
 import '../widgets/tutorial_overlay.dart';
 import '../widgets/floating_hint.dart';
+import '../widgets/duel_result_overlay.dart';
 import '../services/tutorial_manager.dart';
 import '../services/db_service.dart';
 import '../services/haptic_service.dart';
@@ -82,6 +83,10 @@ class _BoardScreenState extends State<BoardScreen>
   StreamSubscription<DuelSession?>? _duelSub;
   int _opponentScore = 0;
   bool _duelFinishedReported = false;
+  bool _showDuelResult = false;
+  bool _myRematchReady = false;
+  int _myFinalElapsedSeconds = 0;
+  int _myFinalRoyals = 0;
 
   // Extreme countdown limit in seconds.
   static const int _extremeSeconds = 180;
@@ -228,12 +233,68 @@ class _BoardScreenState extends State<BoardScreen>
 
     _duelSub = DuelService.watchDuel(_duelSession!.duelId).listen((updated) {
       if (!mounted || updated == null) return;
-      setState(() {
-        _duelSession = updated;
-        final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
-        final isHost = updated.hostUid == myUid;
-        _opponentScore = isHost ? updated.guestScore : updated.hostScore;
-      });
+      _onDuelUpdate(updated);
+    });
+  }
+
+  void _onDuelUpdate(DuelSession updated) {
+    setState(() {
+      _duelSession = updated;
+      final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final isHost = updated.hostUid == myUid;
+      _opponentScore = isHost ? updated.guestScore : updated.hostScore;
+    });
+
+    if (updated.isFinished && !_showDuelResult) {
+      setState(() => _showDuelResult = true);
+    }
+
+    if (updated.bothRematchReady && _showDuelResult) {
+      _executeRematch(updated.seed);
+    }
+  }
+
+  void _onPlayAgainTapped() {
+    final session = _duelSession;
+    if (session == null) return;
+    setState(() => _myRematchReady = true);
+    final isHost = session.hostUid == FirebaseAuth.instance.currentUser?.uid;
+    final newSeed = isHost ? Random().nextInt(0x7FFFFFFF) : null;
+    DuelService.signalRematch(
+      session.duelId,
+      isHost: isHost,
+      newSeed: newSeed,
+    ).catchError((e) {
+      debugPrint('signalRematch failed: $e');
+      if (mounted) setState(() => _myRematchReady = false);
+    });
+  }
+
+  void _executeRematch(int newSeed) {
+    final session = _duelSession;
+    if (session == null) return;
+
+    _duelSub?.cancel();
+
+    setState(() {
+      _showDuelResult = false;
+      _myRematchReady = false;
+      _duelFinishedReported = false;
+      _xpAwardedThisGame = false;
+      _statsUpdatedThisGame = false;
+      _myFinalElapsedSeconds = 0;
+      _myFinalRoyals = 0;
+      _opponentScore = 0;
+      _undo.clear();
+      _redo.clear();
+      _clearedAtLeastOnePairThisPhase = false;
+      game = GameState.newGame(seed: newSeed);
+      game.evaluateGameOverInFill();
+    });
+
+    _duelSub = DuelService.watchDuel(session.duelId).listen((updated) {
+      if (!mounted || updated == null) return;
+      _onDuelUpdate(updated);
     });
   }
 
@@ -787,9 +848,17 @@ class _BoardScreenState extends State<BoardScreen>
       if (_duelSession != null && !_duelFinishedReported) {
         final duelId = _duelSession!.duelId;
         final score = game.score;
+        _myFinalElapsedSeconds =
+            (game.endTime ?? DateTime.now()).difference(game.startTime).inSeconds;
+        _myFinalRoyals = game.royalsPlacedCorrect;
         () async {
           try {
-            await DuelService.markFinished(duelId, score);
+            await DuelService.markFinished(
+              duelId,
+              score,
+              elapsedSeconds: _myFinalElapsedSeconds,
+              royalsPlaced: _myFinalRoyals,
+            );
             if (mounted) _duelFinishedReported = true;
           } catch (e) {
             debugPrint('DuelService.markFinished (winner) failed: $e');
@@ -814,9 +883,17 @@ class _BoardScreenState extends State<BoardScreen>
       if (_duelSession != null && !_duelFinishedReported) {
         final duelId = _duelSession!.duelId;
         final score = game.score;
+        _myFinalElapsedSeconds =
+            (game.endTime ?? DateTime.now()).difference(game.startTime).inSeconds;
+        _myFinalRoyals = game.royalsPlacedCorrect;
         () async {
           try {
-            await DuelService.markFinished(duelId, score);
+            await DuelService.markFinished(
+              duelId,
+              score,
+              elapsedSeconds: _myFinalElapsedSeconds,
+              royalsPlaced: _myFinalRoyals,
+            );
             if (mounted) _duelFinishedReported = true;
           } catch (e) {
             debugPrint('DuelService.markFinished (loser) failed: $e');
@@ -922,25 +999,16 @@ class _BoardScreenState extends State<BoardScreen>
       _clearedAtLeastOnePairThisPhase = false;
       _onClearPhaseStarted();
     }
-    Future.delayed(const Duration(milliseconds: 400), () {
-      if (!mounted) return;
-      _triggerPhaseTransitionFeedback(isFillToClear: isFillToClear);
-    });
+    _triggerPhaseTransitionFeedback(isFillToClear: isFillToClear);
   }
 
   void _triggerPhaseTransitionFeedback({required bool isFillToClear}) {
     HapticService.success();
 
     if (!_isMuted) {
-      _phasePlayer.stop().then((_) {
+      _phasePlayer.seek(Duration.zero).then((_) {
         if (!mounted) return;
-        _phasePlayer.setVolume(1.0).then((_) {
-          if (!mounted) return;
-          _phasePlayer.seek(Duration.zero).then((_) {
-            if (!mounted) return;
-            _phasePlayer.resume().catchError((_) {});
-          });
-        });
+        _phasePlayer.resume().catchError((_) {});
       }).catchError((_) {});
     }
 
@@ -1296,9 +1364,16 @@ class _BoardScreenState extends State<BoardScreen>
       if (imageBytes == null) throw Exception('capture returned null');
 
       if (kIsWeb) {
-        // Web Share API Level 2 (files) is not universally supported.
-        // Fall back to text-only share on web.
-        await SharePlus.instance.share(ShareParams(text: text));
+        try {
+          await SharePlus.instance.share(
+            ShareParams(
+              text: text,
+              files: [XFile.fromData(imageBytes, mimeType: 'image/png', name: 'royal_frame_result.png')],
+            ),
+          );
+        } catch (_) {
+          await SharePlus.instance.share(ShareParams(text: text));
+        }
         return;
       }
 
@@ -2540,6 +2615,19 @@ class _BoardScreenState extends State<BoardScreen>
                   if (_duelSession != null)
                     _buildDuelHud(),
 
+                  // Duel comparison screen — shown when both players finish
+                  if (_duelSession != null && _showDuelResult)
+                    Positioned.fill(
+                      child: DuelResultOverlay(
+                        session: _duelSession!,
+                        myUid: FirebaseAuth.instance.currentUser?.uid ?? '',
+                        myElapsedSeconds: _myFinalElapsedSeconds,
+                        myRoyals: _myFinalRoyals,
+                        myRematchReady: _myRematchReady,
+                        onPlayAgain: _onPlayAgainTapped,
+                      ),
+                    ),
+
                   // Floating contextual hints (Phase B & C) — non-blocking,
                   // anchored top-left so they never cover the grid center.
                   if (_activeHint != _HintType.none)
@@ -2719,6 +2807,7 @@ class _BoardScreenState extends State<BoardScreen>
   }
 
   Widget _buildDuelHud() {
+    if (_showDuelResult) return const SizedBox.shrink();
     final session = _duelSession;
     if (session == null) return const SizedBox.shrink();
 

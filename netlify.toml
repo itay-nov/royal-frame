@@ -37,10 +37,17 @@
     # unpkg.com         → CanvasKit WASM (Flutter Web renderer, if CDN-loaded)
     #
     # style-src 'unsafe-inline' is required by Flutter Web's inline <style> tags.
-    # No eval() anywhere — 'unsafe-eval' is intentionally omitted.
+    # 'wasm-unsafe-eval' is required by Flutter Web's WebAssembly renderer.
+    # 'unsafe-inline' in script-src is required by flutterfire_web: it injects an
+    # inline <script> to define window.ff_trigger_{service} bootstrap loaders for
+    # each Firebase SDK (firestore, auth, app-check, etc.). Browsers without
+    # TrustedTypes support (Firefox, Safari) use this fallback path. Without it,
+    # Firebase SDK initialization fails and retries every few seconds.
     Content-Security-Policy = """
       default-src 'self';
       script-src 'self'
+                 'unsafe-inline'
+                 'wasm-unsafe-eval'
                  https://*.googleapis.com
                  https://*.gstatic.com
                  https://www.google.com
@@ -58,6 +65,7 @@
                  https://www.google.com;
       connect-src 'self'
                  https://*.googleapis.com
+                 https://*.gstatic.com
                  https://*.firebaseio.com
                  https://*.firebaseapp.com
                  https://identitytoolkit.googleapis.com

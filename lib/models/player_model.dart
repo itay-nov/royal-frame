@@ -32,14 +32,15 @@ class PlayerModel {
 
   // יצירת אובייקט מתוך נתונים שהגיעו מהענן
   factory PlayerModel.fromMap(Map<String, dynamic> map) {
+    final ts = map['lastUpdated'];
     return PlayerModel(
-      uid: map['uid'],
-      displayName: map['displayName'],
-      highScore: map['highScore'] ?? 0,
-      totalScore: map['totalScore'] ?? 0,
-      wins: map['wins'] ?? 0,
-      totalGames: map['totalGames'] ?? 0,
-      lastUpdated: map['lastUpdated'].toDate(),
+      uid: map['uid'] as String? ?? '',
+      displayName: map['displayName'] as String? ?? 'Player',
+      highScore: (map['highScore'] as num?)?.toInt() ?? 0,
+      totalScore: (map['totalScore'] as num?)?.toInt() ?? 0,
+      wins: (map['wins'] as num?)?.toInt() ?? 0,
+      totalGames: (map['totalGames'] as num?)?.toInt() ?? 0,
+      lastUpdated: ts != null ? ts.toDate() : DateTime(2020),
     );
   }
 }
