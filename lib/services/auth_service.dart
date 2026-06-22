@@ -30,7 +30,11 @@ class AuthService {
   Future<UserCredential?> signInWithGoogle() async {
     try {
       if (kIsWeb) {
-        final googleProvider = GoogleAuthProvider();
+        final googleProvider = GoogleAuthProvider()
+          ..setCustomParameters({
+            'client_id':
+                '961421919288-1oqcid53ipgtshukmvkp90cu2g1i21g2.apps.googleusercontent.com',
+          });
         return await _auth.signInWithPopup(googleProvider);
       } else {
         await GoogleSignIn.instance.initialize();

@@ -48,3 +48,5 @@ app.*.map.json
 /android/app/release
 # Secure Android Obfuscation Symbols
 .debug_symbols/
+# Local Netlify folder
+.netlify

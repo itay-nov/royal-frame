@@ -22,6 +22,15 @@ class DuelSession {
   final DateTime createdAt;
   final int seed;
 
+  // Per-player stats written at game end
+  final int? hostTime;    // elapsed seconds
+  final int? guestTime;
+  final int? hostRoyals;  // royalsPlacedCorrect
+  final int? guestRoyals;
+
+  // Rematch coordination: keyed by uid → true when that player is ready
+  final Map<String, bool> rematchReady;
+
   const DuelSession({
     required this.duelId,
     required this.code,
@@ -35,6 +44,11 @@ class DuelSession {
     this.winnerId,
     required this.createdAt,
     required this.seed,
+    this.hostTime,
+    this.guestTime,
+    this.hostRoyals,
+    this.guestRoyals,
+    this.rematchReady = const {},
   });
 
   factory DuelSession.fromMap(String id, Map<String, dynamic> data) {
@@ -59,6 +73,12 @@ class DuelSession {
       winnerId: data['winnerId'] as String?,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       seed: (data['seed'] as num?)?.toInt() ?? 0,
+      hostTime: (data['hostTime'] as num?)?.toInt(),
+      guestTime: (data['guestTime'] as num?)?.toInt(),
+      hostRoyals: (data['hostRoyals'] as num?)?.toInt(),
+      guestRoyals: (data['guestRoyals'] as num?)?.toInt(),
+      rematchReady: Map<String, bool>.from(
+          (data['rematchReady'] as Map?) ?? {}),
     );
   }
 
@@ -74,11 +94,22 @@ class DuelSession {
         'winnerId': winnerId,
         'createdAt': Timestamp.fromDate(createdAt),
         'seed': seed,
+        'hostTime': hostTime,
+        'guestTime': guestTime,
+        'hostRoyals': hostRoyals,
+        'guestRoyals': guestRoyals,
+        'rematchReady': rematchReady,
       };
 
   bool get isFinished => status == DuelStatus.finished;
   bool get isActive   => status == DuelStatus.active;
   bool get isWaiting  => status == DuelStatus.waiting;
+
+  bool get bothRematchReady =>
+      hostUid.isNotEmpty &&
+      (guestUid?.isNotEmpty ?? false) &&
+      (rematchReady[hostUid] == true) &&
+      (rematchReady[guestUid] == true);
 }
 
 class DuelService {
@@ -177,7 +208,12 @@ class DuelService {
 
   /// Marks this player's game as finished. Once both players have finished,
   /// the higher-score player is recorded as winner.
-  static Future<void> markFinished(String duelId, int finalScore) async {
+  static Future<void> markFinished(
+    String duelId,
+    int finalScore, {
+    required int elapsedSeconds,
+    required int royalsPlaced,
+  }) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return;
 
@@ -190,8 +226,10 @@ class DuelService {
       final isHost = data['hostUid'] == uid;
 
       final updates = <String, dynamic>{
-        isHost ? 'hostScore' : 'guestScore': finalScore,
+        isHost ? 'hostScore'    : 'guestScore':    finalScore,
         isHost ? 'hostFinished' : 'guestFinished': true,
+        isHost ? 'hostTime'     : 'guestTime':     elapsedSeconds,
+        isHost ? 'hostRoyals'   : 'guestRoyals':   royalsPlaced,
       };
 
       final hostFinished  = (data['hostFinished']  as bool?) ?? false;
@@ -211,6 +249,68 @@ class DuelService {
       }
 
       tx.update(ref, updates);
+    });
+  }
+
+  // ── Rematch ────────────────────────────────────────────────────────────────
+
+  /// Signals that this player is ready for a rematch.
+  /// Host also provides a new seed. When both players signal, the doc is
+  /// reset in-place so the stream fires and both clients start the new game.
+  static Future<void> signalRematch(
+    String duelId, {
+    required bool isHost,
+    int? newSeed,
+  }) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+
+    await _db.runTransaction((tx) async {
+      final ref = _duels.doc(duelId);
+      final snap = await tx.get(ref);
+      if (!snap.exists) return;
+
+      final data = snap.data()!;
+      final currentReady = Map<String, bool>.from(
+          (data['rematchReady'] as Map?) ?? {});
+      currentReady[uid] = true;
+
+      final hostUid  = data['hostUid']  as String? ?? '';
+      final guestUid = data['guestUid'] as String? ?? '';
+      final bothReady = hostUid.isNotEmpty &&
+          guestUid.isNotEmpty &&
+          (currentReady[hostUid] == true) &&
+          (currentReady[guestUid] == true);
+
+      if (bothReady) {
+        // Both ready — reset the doc for the new round
+        final seed = isHost
+            ? (newSeed ?? Random().nextInt(0x7FFFFFFF))
+            : (data['seed'] as num?)?.toInt() ?? Random().nextInt(0x7FFFFFFF);
+        tx.update(ref, {
+          'status':        DuelStatus.active.name,
+          'seed':          seed,
+          'hostScore':     0,
+          'guestScore':    0,
+          'hostFinished':  false,
+          'guestFinished': false,
+          'hostTime':      FieldValue.delete(),
+          'guestTime':     FieldValue.delete(),
+          'hostRoyals':    FieldValue.delete(),
+          'guestRoyals':   FieldValue.delete(),
+          'winnerId':      FieldValue.delete(),
+          'rematchReady':  {},
+        });
+      } else {
+        // Just mark this player as ready (+ write new seed if host)
+        final updates = <String, dynamic>{
+          'rematchReady': currentReady,
+        };
+        if (isHost && newSeed != null) {
+          updates['seed'] = newSeed;
+        }
+        tx.update(ref, updates);
+      }
     });
   }
 

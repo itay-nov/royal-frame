@@ -8,10 +8,13 @@ service cloud.firestore {
       allow create: if request.auth != null
                     && request.auth.uid == uid
                     && validPlayerCreate();
+      // Full stats update (score / wins) OR a tutorial-only merge write.
       allow update: if request.auth != null
                     && request.auth.uid == uid
-                    && validPlayerUpdate()
-                    && notTooSoon();
+                    && (
+                      (validPlayerUpdate() && notTooSoon())
+                      || validTutorialUpdate()
+                    );
       allow delete: if false;
     }
 
@@ -19,11 +22,11 @@ service cloud.firestore {
     match /duels/{code} {
       allow read:   if request.auth != null;
       allow create: if request.auth != null
-                    && request.resource.data.hostId == request.auth.uid;
+                    && request.resource.data.hostUid == request.auth.uid;
       allow update: if request.auth != null
-                    && (resource.data.hostId == request.auth.uid
-                        || resource.data.guestId == request.auth.uid
-                        || resource.data.guestId == null);
+                    && (resource.data.hostUid == request.auth.uid
+                        || resource.data.guestUid == request.auth.uid
+                        || resource.data.guestUid == null);
       allow delete: if false;
     }
 
@@ -77,6 +80,14 @@ service cloud.firestore {
           && d.totalGames  >= e.totalGames     // game count never decreases
           && d.totalGames  <= e.totalGames + 1 // max 1 game per update
           && d.uid         == e.uid;           // uid is immutable
+    }
+
+    function validTutorialUpdate() {
+      let d = request.resource.data;
+      let e = resource.data;
+      // Only allows setting hasSeenTutorial = true; no other field may change.
+      return d.get('hasSeenTutorial', false) == true
+          && d.diff(e).affectedKeys().hasOnly(['hasSeenTutorial']);
     }
   }
 }
