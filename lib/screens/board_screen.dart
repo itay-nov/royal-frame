@@ -17,6 +17,7 @@ import '../utils/localization.dart';
 import '../widgets/tutorial_overlay.dart';
 import '../widgets/floating_hint.dart';
 import '../widgets/duel_result_overlay.dart';
+import '../widgets/rules_dialog.dart';
 import '../services/tutorial_manager.dart';
 import '../services/db_service.dart';
 import '../services/haptic_service.dart';
@@ -35,7 +36,6 @@ enum _HintType {
   royalCard,
   clearStart,
   clearFirstDone,
-  clearRoyalHint,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,6 +119,9 @@ class _BoardScreenState extends State<BoardScreen>
   // Phase-transition pulse
   late AnimationController _phasePulseCtrl;
   bool _showPhasePulse = false;
+  // Tracks whether the hint pulse was animating when the app was backgrounded,
+  // so it can be restored on resume.
+  bool _wasPulsingBeforePause = false;
   // Suppresses pop.mp3 for the entire duration of the phase-change banner so
   // the two sounds never overlap.
   bool _phaseTransitionBlocking = false;
@@ -237,7 +240,7 @@ class _BoardScreenState extends State<BoardScreen>
     });
   }
 
-  void _onDuelUpdate(DuelSession updated) {
+  Future<void> _onDuelUpdate(DuelSession updated) async {
     setState(() {
       _duelSession = updated;
       final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
@@ -245,12 +248,42 @@ class _BoardScreenState extends State<BoardScreen>
       _opponentScore = isHost ? updated.guestScore : updated.hostScore;
     });
 
-    if (updated.isFinished && !_showDuelResult) {
+    if (updated.isFinished && updated.abandonedBy == null && !_showDuelResult) {
       setState(() => _showDuelResult = true);
     }
 
-    if (updated.bothRematchReady && _showDuelResult) {
+    if (_showDuelResult && updated.isActive && updated.abandonedBy == null) {
       _executeRematch(updated.seed);
+    }
+
+    if (updated.abandonedBy != null && !_showDuelResult) {
+      final name = updated.abandonedBy!;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _lang == AppLang.he
+                  ? '$name עזב את המשחק'
+                  : '$name has left the game',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            backgroundColor: Colors.red.shade800,
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+        await Future.delayed(const Duration(seconds: 2));
+        if (!mounted) return;
+        // Treat the remaining player as winner
+        game.phase = Phase.winner;
+        game.endTime ??= DateTime.now();
+        setState(() => _duelSession = null);
+        _checkEndState();
+      }
     }
   }
 
@@ -274,8 +307,6 @@ class _BoardScreenState extends State<BoardScreen>
     final session = _duelSession;
     if (session == null) return;
 
-    _duelSub?.cancel();
-
     setState(() {
       _showDuelResult = false;
       _myRematchReady = false;
@@ -290,11 +321,6 @@ class _BoardScreenState extends State<BoardScreen>
       _clearedAtLeastOnePairThisPhase = false;
       game = GameState.newGame(seed: newSeed);
       game.evaluateGameOverInFill();
-    });
-
-    _duelSub = DuelService.watchDuel(session.duelId).listen((updated) {
-      if (!mounted || updated == null) return;
-      _onDuelUpdate(updated);
     });
   }
 
@@ -382,15 +408,8 @@ class _BoardScreenState extends State<BoardScreen>
     _hintAutoTimer?.cancel();
     _hintAutoTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted) return;
-      setState(() {
-        _clearHintStep = 2;
-        _activeHint = _HintType.clearRoyalHint;
-      });
-      _hintAutoTimer = Timer(const Duration(seconds: 5), () {
-        if (!mounted) return;
-        setState(() => _activeHint = _HintType.none);
-        TutorialManager.complete();
-      });
+      setState(() => _activeHint = _HintType.none);
+      TutorialManager.complete();
     });
   }
 
@@ -421,9 +440,6 @@ class _BoardScreenState extends State<BoardScreen>
       _HintType.clearFirstDone => isHe
           ? 'מצוין! המשך לפנות זוגות.'
           : 'Great! Keep clearing pairs.',
-      _HintType.clearRoyalHint => isHe
-          ? 'קלפי מלוכה מתנקים בצמדים: J עם J, Q עם Q, K עם K.'
-          : 'Royals clear in pairs: J with J, Q with Q, K with K.',
       _ => '',
     };
   }
@@ -664,9 +680,26 @@ class _BoardScreenState extends State<BoardScreen>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
       _pauseGameTimer();
-      _stopAllAudio();
+      _stopAllAudioNow();
+      _duelSub?.cancel();
+      _duelSub = null;
+      _hintAutoTimer?.cancel();
+      _wasPulsingBeforePause = _hintPulseCtrl.isAnimating;
+      _hintPulseCtrl.stop();
+      _phasePulseCtrl.stop();
+      _confettiCtrl.stop();
     } else if (state == AppLifecycleState.resumed) {
+      if (_duelSession != null) {
+        _duelSub = DuelService.watchDuel(_duelSession!.duelId).listen((updated) {
+          if (!mounted || updated == null) return;
+          _onDuelUpdate(updated);
+        });
+      }
       _resumeGameTimer();
+      if (_wasPulsingBeforePause) {
+        _hintPulseCtrl.repeat(reverse: true);
+        _wasPulsingBeforePause = false;
+      }
     }
   }
 
@@ -834,6 +867,14 @@ class _BoardScreenState extends State<BoardScreen>
 
   void _checkEndState() {
     if (game.phase == Phase.winner) {
+      _inactivityTimer?.cancel();
+      _hintAutoTimer?.cancel();
+      _hintPulseCtrl.stop();
+      setState(() {
+        _hintedPair.clear();
+        _hintCurrentCard = false;
+        _activeHint = _HintType.none;
+      });
       DailyGoalService.addProgress(GoalType.finishMatch, 1);
       if (!_xpAwardedThisGame) {
         _xpAwardedThisGame = true;
@@ -869,6 +910,14 @@ class _BoardScreenState extends State<BoardScreen>
       _confettiCtrl.play();
       _playWin();
     } else if (game.phase == Phase.gameOver) {
+      _inactivityTimer?.cancel();
+      _hintAutoTimer?.cancel();
+      _hintPulseCtrl.stop();
+      setState(() {
+        _hintedPair.clear();
+        _hintCurrentCard = false;
+        _activeHint = _HintType.none;
+      });
       DailyGoalService.addProgress(GoalType.finishMatch, 1);
       if (!_xpAwardedThisGame) {
         _xpAwardedThisGame = true;
@@ -1006,7 +1055,9 @@ class _BoardScreenState extends State<BoardScreen>
     HapticService.success();
 
     if (!_isMuted) {
-      _phasePlayer.seek(Duration.zero).then((_) {
+      _phasePlayer.setVolume(1.0).then((_) {
+        return _phasePlayer.seek(Duration.zero);
+      }).then((_) {
         if (!mounted) return;
         _phasePlayer.resume().catchError((_) {});
       }).catchError((_) {});
@@ -2083,9 +2134,9 @@ class _BoardScreenState extends State<BoardScreen>
       };
 
   String get _difficultyLabel => switch (_difficulty) {
-        GameDifficulty.medium  => 'MEDIUM',
-        GameDifficulty.hard    => 'HARD',
-        GameDifficulty.extreme => 'EXTREME',
+        GameDifficulty.medium  => _lang == AppLang.he ? 'בינוני' : 'MEDIUM',
+        GameDifficulty.hard    => _lang == AppLang.he ? 'קשה'    : 'HARD',
+        GameDifficulty.extreme => _lang == AppLang.he ? 'קיצוני' : 'EXTREME',
       };
 
   @override
@@ -2247,42 +2298,90 @@ class _BoardScreenState extends State<BoardScreen>
                       if (game.phase == Phase.winner ||
                           game.phase == Phase.gameOver) {
                         Navigator.pop(context, game);
-                      } else {
+                        return;
+                      }
+                      if (_duelSession != null) {
                         showDialog(
                           context: context,
                           builder: (dialogContext) => AlertDialog(
                             backgroundColor: kBurgundyLight,
                             title: Text(
-                              _l.dialogHomeTitle,
-                              style:
-                                  const TextStyle(color: kGold),
+                              _lang == AppLang.he
+                                  ? 'לעזוב את הדו-קרב?'
+                                  : 'Leave the Duel?',
+                              style: const TextStyle(color: kGold),
                             ),
                             content: Text(
-                              _l.dialogHomeBody,
-                              style: const TextStyle(
-                                  color: Colors.white),
+                              _lang == AppLang.he
+                                  ? 'אם תעזוב, תפסיד את הדו-קרב והיריב יוכרז כמנצח.'
+                                  : 'If you leave, you forfeit the duel and your opponent wins.',
+                              style: const TextStyle(color: Colors.white),
                             ),
                             actions: [
                               TextButton(
-                                onPressed: () =>
-                                    Navigator.pop(dialogContext),
+                                onPressed: () => Navigator.pop(dialogContext),
                                 child: Text(
-                                  _l.btnNo,
-                                  style: const TextStyle(
-                                      color: kGoldDark),
+                                  _lang == AppLang.he ? 'ביטול' : 'Cancel',
+                                  style: const TextStyle(color: kGoldDark),
                                 ),
                               ),
                               FilledButton(
+                                style: FilledButton.styleFrom(
+                                    backgroundColor: Colors.red.shade800),
                                 onPressed: () {
                                   Navigator.pop(dialogContext);
+                                  final name = FirebaseAuth
+                                          .instance.currentUser?.displayName ??
+                                      (_lang == AppLang.he ? 'יריב' : 'Opponent');
+                                  DuelService.markAbandoned(
+                                      _duelSession!.duelId, name);
+                                  _duelSub?.cancel();
                                   Navigator.pop(context, game);
                                 },
-                                child: Text(_l.btnYes),
+                                child: Text(
+                                  _lang == AppLang.he ? 'עזוב' : 'Leave',
+                                ),
                               ),
                             ],
                           ),
                         );
+                        return;
                       }
+                      // Solo mode: show the existing confirmation dialog
+                      showDialog(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          backgroundColor: kBurgundyLight,
+                          title: Text(
+                            _l.dialogHomeTitle,
+                            style:
+                                const TextStyle(color: kGold),
+                          ),
+                          content: Text(
+                            _l.dialogHomeBody,
+                            style: const TextStyle(
+                                color: Colors.white),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext),
+                              child: Text(
+                                _l.btnNo,
+                                style: const TextStyle(
+                                    color: kGoldDark),
+                              ),
+                            ),
+                            FilledButton(
+                              onPressed: () {
+                                Navigator.pop(dialogContext);
+                                Navigator.pop(context, game);
+                              },
+                              child: Text(_l.btnYes),
+                            ),
+                          ],
+                        ),
+                      );
                     }),
                     const SizedBox(width: 2),
                     _buildCompactIcon(
@@ -2317,7 +2416,9 @@ class _BoardScreenState extends State<BoardScreen>
                         ),
                         onSelected: (value) {
                           if (value == 'rules')
-                            _showRules();
+                            showDialog(
+                                context: context,
+                                builder: (_) => RulesDialog(lang: _lang));
                           else if (value == 'difficulty')
                             _showDifficultyPicker();
                           else if (value == 'cosmetics')
@@ -2353,7 +2454,7 @@ class _BoardScreenState extends State<BoardScreen>
                                   color: kGold, size: 20),
                               const SizedBox(width: 12),
                               Text(
-                                'Difficulty: $_difficultyLabel',
+                                (_lang == AppLang.he ? 'רמה: ' : 'Difficulty: ') + _difficultyLabel,
                                 style: const TextStyle(
                                     color: kGoldLight, fontSize: 14),
                               ),
@@ -2361,13 +2462,13 @@ class _BoardScreenState extends State<BoardScreen>
                           ),
                           PopupMenuItem(
                             value: 'cosmetics',
-                            child: Row(children: const [
-                              Icon(Icons.style,
-                                  color: kGold, size: 20),
-                              SizedBox(width: 12),
-                              Text('Themes',
-                                  style: TextStyle(
-                                      color: kGoldLight, fontSize: 14)),
+                            child: Row(children: [
+                              const Icon(Icons.style, color: kGold, size: 20),
+                              const SizedBox(width: 12),
+                              Text(
+                                _lang == AppLang.he ? 'ערכות נושא' : 'Themes',
+                                style: const TextStyle(color: kGoldLight, fontSize: 14),
+                              ),
                             ]),
                           ),
                           PopupMenuItem(
@@ -2391,7 +2492,9 @@ class _BoardScreenState extends State<BoardScreen>
                                   color: kGold,
                                   size: 20),
                               const SizedBox(width: 12),
-                              Text(_isMuted ? 'Unmute' : 'Mute',
+                              Text(_isMuted
+                                  ? (_lang == AppLang.he ? 'בטל השתקה' : 'Unmute')
+                                  : (_lang == AppLang.he ? 'השתק' : 'Mute'),
                                   style: const TextStyle(
                                       color: kGoldLight, fontSize: 14)),
                             ]),
@@ -2408,8 +2511,8 @@ class _BoardScreenState extends State<BoardScreen>
                               const SizedBox(width: 12),
                               Text(
                                   HapticService.isEnabled
-                                      ? 'Vibration: On'
-                                      : 'Vibration: Off',
+                                      ? (_lang == AppLang.he ? 'רטט: פועל' : 'Vibration: On')
+                                      : (_lang == AppLang.he ? 'רטט: כבוי' : 'Vibration: Off'),
                                   style: const TextStyle(
                                       color: kGoldLight, fontSize: 14)),
                             ]),
@@ -2612,11 +2715,14 @@ class _BoardScreenState extends State<BoardScreen>
                     _buildGameOverOverlay(),
 
                   // Duel HUD — live opponent score + result banner
-                  if (_duelSession != null)
+                  if (_duelSession != null &&
+                      game.phase != Phase.winner &&
+                      game.phase != Phase.gameOver)
                     _buildDuelHud(),
 
                   // Duel comparison screen — shown when both players finish
-                  if (_duelSession != null && _showDuelResult)
+                  if (_duelSession != null && _showDuelResult &&
+                      _duelSession!.abandonedBy == null)
                     Positioned.fill(
                       child: DuelResultOverlay(
                         session: _duelSession!,
@@ -2819,7 +2925,7 @@ class _BoardScreenState extends State<BoardScreen>
         : session.hostName;
 
     // Result banner when duel is finished
-    if (session.isFinished) {
+    if (session.isFinished && session.abandonedBy == null) {
       final iWon = session.winnerId == myUid;
       return Positioned(
         top: 0,
