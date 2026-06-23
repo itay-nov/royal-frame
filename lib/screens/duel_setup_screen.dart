@@ -3,13 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme_constants.dart';
 import '../services/duel_service.dart';
+import '../utils/localization.dart';
 import 'board_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DUEL SETUP SCREEN — host or join a 1v1 duel via a 6-char code
 // ─────────────────────────────────────────────────────────────────────────────
 class DuelSetupScreen extends StatefulWidget {
-  const DuelSetupScreen({super.key});
+  const DuelSetupScreen({super.key, required this.lang});
+  final AppLang lang;
 
   @override
   State<DuelSetupScreen> createState() => _DuelSetupScreenState();
@@ -33,13 +35,14 @@ class _DuelSetupScreenState extends State<DuelSetupScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isHe = widget.lang == AppLang.he;
     return Scaffold(
       backgroundColor: kBurgundy,
       appBar: AppBar(
         backgroundColor: kBurgundyLight,
-        title: const Text(
-          'Duel Mode',
-          style: TextStyle(
+        title: Text(
+          isHe ? 'מצב דו-קרב' : 'Duel Mode',
+          style: const TextStyle(
             color: kGold,
             fontWeight: FontWeight.w900,
             letterSpacing: 1.5,
@@ -51,17 +54,17 @@ class _DuelSetupScreenState extends State<DuelSetupScreen>
           indicatorColor: kGold,
           labelColor: kGold,
           unselectedLabelColor: kGoldDark,
-          tabs: const [
-            Tab(icon: Icon(Icons.add_circle_outline), text: 'Host'),
-            Tab(icon: Icon(Icons.login),              text: 'Join'),
+          tabs: [
+            Tab(icon: const Icon(Icons.add_circle_outline), text: isHe ? 'מארח' : 'Host'),
+            Tab(icon: const Icon(Icons.login),              text: isHe ? 'הצטרף' : 'Join'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabCtrl,
-        children: const [
-          _HostTab(),
-          _JoinTab(),
+        children: [
+          _HostTab(lang: widget.lang),
+          _JoinTab(lang: widget.lang),
         ],
       ),
     );
@@ -72,7 +75,8 @@ class _DuelSetupScreenState extends State<DuelSetupScreen>
 // HOST TAB — creates a duel and waits for opponent
 // ─────────────────────────────────────────────────────────────────────────────
 class _HostTab extends StatefulWidget {
-  const _HostTab();
+  const _HostTab({required this.lang});
+  final AppLang lang;
 
   @override
   State<_HostTab> createState() => _HostTabState();
@@ -83,6 +87,8 @@ class _HostTabState extends State<_HostTab> {
   StreamSubscription<DuelSession?>? _sub;
   bool _creating = false;
   String? _error;
+
+  bool get _isHe => widget.lang == AppLang.he;
 
   @override
   void dispose() {
@@ -126,6 +132,7 @@ class _HostTabState extends State<_HostTab> {
         builder: (_) => BoardScreen(
           duelSession: session,
           isHost: true,
+          initialLang: widget.lang,
         ),
       ),
     );
@@ -141,9 +148,9 @@ class _HostTabState extends State<_HostTab> {
           children: [
             const Icon(Icons.sports_kabaddi, color: kGold, size: 56),
             const SizedBox(height: 20),
-            const Text(
-              'Challenge a Friend',
-              style: TextStyle(
+            Text(
+              _isHe ? 'אתגר חבר' : 'Challenge a Friend',
+              style: const TextStyle(
                 color: kGold,
                 fontSize: 22,
                 fontWeight: FontWeight.w900,
@@ -151,10 +158,12 @@ class _HostTabState extends State<_HostTab> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Create a duel and share your code. Both players start with the same deck.',
+            Text(
+              _isHe
+                  ? 'צור דו-קרב ושתף את הקוד. שני השחקנים מתחילים עם אותה חפיסה.'
+                  : 'Create a duel and share your code. Both players start with the same deck.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white60, fontSize: 13, height: 1.5),
+              style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.5),
             ),
             const SizedBox(height: 32),
 
@@ -186,7 +195,9 @@ class _HostTabState extends State<_HostTab> {
                             color: kGold, strokeWidth: 2),
                         )
                       : const Icon(Icons.add),
-                  label: Text(_creating ? 'Creating...' : 'Create Duel'),
+                  label: Text(_creating
+                      ? (_isHe ? 'יוצר...' : 'Creating...')
+                      : (_isHe ? 'צור דו-קרב' : 'Create Duel')),
                 ),
               ),
             ] else ...[
@@ -205,9 +216,9 @@ class _HostTabState extends State<_HostTab> {
                 ),
                 child: Column(
                   children: [
-                    const Text(
-                      'Your Code',
-                      style: TextStyle(
+                    Text(
+                      _isHe ? 'הקוד שלך' : 'Your Code',
+                      style: const TextStyle(
                         color: kGoldLight,
                         fontSize: 13,
                         letterSpacing: 1.2,
@@ -234,20 +245,20 @@ class _HostTabState extends State<_HostTab> {
                           ClipboardData(text: _session!.code),
                         );
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Code copied!'),
-                            duration: Duration(seconds: 2),
+                          SnackBar(
+                            content: Text(_isHe ? 'הקוד הועתק!' : 'Code copied!'),
+                            duration: const Duration(seconds: 2),
                           ),
                         );
                       },
                       icon: const Icon(Icons.copy, size: 16),
-                      label: const Text('Copy Code'),
+                      label: Text(_isHe ? 'העתק קוד' : 'Copy Code'),
                     ),
                     const SizedBox(height: 16),
-                    const Row(
+                    Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(
+                        const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
@@ -255,10 +266,10 @@ class _HostTabState extends State<_HostTab> {
                             strokeWidth: 2,
                           ),
                         ),
-                        SizedBox(width: 10),
+                        const SizedBox(width: 10),
                         Text(
-                          'Waiting for opponent...',
-                          style: TextStyle(
+                          _isHe ? 'ממתין ליריב...' : 'Waiting for opponent...',
+                          style: const TextStyle(
                             color: Colors.white60,
                             fontSize: 13,
                           ),
@@ -280,7 +291,8 @@ class _HostTabState extends State<_HostTab> {
 // JOIN TAB — enter a code to join an existing duel
 // ─────────────────────────────────────────────────────────────────────────────
 class _JoinTab extends StatefulWidget {
-  const _JoinTab();
+  const _JoinTab({required this.lang});
+  final AppLang lang;
 
   @override
   State<_JoinTab> createState() => _JoinTabState();
@@ -291,6 +303,8 @@ class _JoinTabState extends State<_JoinTab> {
   bool _joining = false;
   String? _error;
 
+  bool get _isHe => widget.lang == AppLang.he;
+
   @override
   void dispose() {
     _ctrl.dispose();
@@ -300,7 +314,9 @@ class _JoinTabState extends State<_JoinTab> {
   Future<void> _joinDuel() async {
     final code = _ctrl.text.trim().toUpperCase();
     if (code.length < 6) {
-      setState(() => _error = 'Please enter a 6-character code.');
+      setState(() => _error = _isHe
+          ? 'אנא הזן קוד בן 6 תווים.'
+          : 'Please enter a 6-character code.');
       return;
     }
     setState(() {
@@ -315,6 +331,7 @@ class _JoinTabState extends State<_JoinTab> {
           builder: (_) => BoardScreen(
             duelSession: session,
             isHost: false,
+            initialLang: widget.lang,
           ),
         ),
       );
@@ -337,9 +354,9 @@ class _JoinTabState extends State<_JoinTab> {
           children: [
             const Icon(Icons.login, color: kGold, size: 56),
             const SizedBox(height: 20),
-            const Text(
-              'Join a Duel',
-              style: TextStyle(
+            Text(
+              _isHe ? 'הצטרף לדו-קרב' : 'Join a Duel',
+              style: const TextStyle(
                 color: kGold,
                 fontSize: 22,
                 fontWeight: FontWeight.w900,
@@ -347,18 +364,28 @@ class _JoinTabState extends State<_JoinTab> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Enter the 6-character code your opponent shared with you.',
+            Text(
+              _isHe
+                  ? 'הזן את קוד 6 התווים ששיתף איתך היריב.'
+                  : 'Enter the 6-character code your opponent shared with you.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white60, fontSize: 13, height: 1.5),
+              style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.5),
             ),
             const SizedBox(height: 32),
 
             TextField(
               controller: _ctrl,
               textCapitalization: TextCapitalization.characters,
+              inputFormatters: [
+                UpperCaseTextFormatter(),
+              ],
               maxLength: 6,
               textAlign: TextAlign.center,
+              onChanged: (value) {
+                if (value.trim().length == 6 && !_joining) {
+                  _joinDuel();
+                }
+              },
               style: const TextStyle(
                 color: kGold,
                 fontSize: 28,
@@ -417,12 +444,22 @@ class _JoinTabState extends State<_JoinTab> {
                             color: kGold, strokeWidth: 2),
                       )
                     : const Icon(Icons.play_arrow),
-                label: Text(_joining ? 'Joining...' : 'Join Duel'),
+                label: Text(_joining
+                    ? (_isHe ? 'מצטרף...' : 'Joining...')
+                    : (_isHe ? 'הצטרף' : 'Join Duel')),
               ),
             ),
           ],
         ),
       ),
     );
+  }
+}
+
+class UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    return newValue.copyWith(text: newValue.text.toUpperCase());
   }
 }

@@ -31,6 +31,9 @@ class DuelSession {
   // Rematch coordination: keyed by uid → true when that player is ready
   final Map<String, bool> rematchReady;
 
+  // Set to the abandoning player's name when they quit mid-duel
+  final String? abandonedBy;
+
   const DuelSession({
     required this.duelId,
     required this.code,
@@ -49,6 +52,7 @@ class DuelSession {
     this.hostRoyals,
     this.guestRoyals,
     this.rematchReady = const {},
+    this.abandonedBy,
   });
 
   factory DuelSession.fromMap(String id, Map<String, dynamic> data) {
@@ -79,6 +83,7 @@ class DuelSession {
       guestRoyals: (data['guestRoyals'] as num?)?.toInt(),
       rematchReady: Map<String, bool>.from(
           (data['rematchReady'] as Map?) ?? {}),
+      abandonedBy: data['abandonedBy'] as String?,
     );
   }
 
@@ -99,6 +104,7 @@ class DuelSession {
         'hostRoyals': hostRoyals,
         'guestRoyals': guestRoyals,
         'rematchReady': rematchReady,
+        'abandonedBy': abandonedBy,
       };
 
   bool get isFinished => status == DuelStatus.finished;
@@ -250,6 +256,18 @@ class DuelService {
 
       tx.update(ref, updates);
     });
+  }
+
+  // ── Abandon ──────────────────────────────────────────────────────────────
+
+  /// Marks the duel finished because [playerName] left mid-game.
+  static Future<void> markAbandoned(String duelId, String playerName) async {
+    try {
+      await _duels.doc(duelId).update({
+        'status': DuelStatus.finished.name,
+        'abandonedBy': playerName,
+      });
+    } catch (_) {}
   }
 
   // ── Rematch ────────────────────────────────────────────────────────────────

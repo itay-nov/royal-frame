@@ -301,7 +301,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                 Icons.sports_kabaddi,
                 () => Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const DuelSetupScreen(),
+                    builder: (_) => DuelSetupScreen(lang: _lang),
                   ),
                 ),
               ),
