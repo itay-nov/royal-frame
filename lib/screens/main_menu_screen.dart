@@ -499,7 +499,7 @@ class _LeaderboardDialog extends StatelessWidget {
         width: 420,
         height: 560,
         child: DefaultTabController(
-          length: 2,
+          length: 3,
           child: Column(
             children: [
               // Header
@@ -538,6 +538,7 @@ class _LeaderboardDialog extends StatelessWidget {
                 unselectedLabelColor: kGoldDark,
                 tabs: const [
                   Tab(icon: Icon(Icons.emoji_events), text: 'High Score'),
+                  Tab(icon: Icon(Icons.military_tech), text: 'Most Wins'),
                   Tab(icon: Icon(Icons.stars), text: 'Total Score'),
                 ],
               ),
@@ -545,6 +546,7 @@ class _LeaderboardDialog extends StatelessWidget {
                 child: TabBarView(
                   children: [
                     _LeaderboardTabContent(orderBy: 'highScore'),
+                    _LeaderboardTabContent(orderBy: 'wins'),
                     _LeaderboardTabContent(orderBy: 'totalScore'),
                   ],
                 ),
@@ -802,7 +804,9 @@ class _LeaderboardTabContentState extends State<_LeaderboardTabContent>
     final isTop3 = rank <= 3 && !isAnchor;
     final score = widget.orderBy == 'totalScore'
         ? player.totalScore
-        : player.highScore;
+        : widget.orderBy == 'wins'
+            ? player.wins
+            : player.highScore;
 
     // Medal emoji for top 3
     final String rankLabel;
