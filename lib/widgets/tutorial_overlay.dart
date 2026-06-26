@@ -124,10 +124,14 @@ class _TutorialOverlayState extends State<TutorialOverlay>
 
   Rect _getRect(GlobalKey k) {
     final box = k.currentContext?.findRenderObject() as RenderBox?;
-    final overlay = context.findRenderObject() as RenderBox?;
-    if (box == null || overlay == null) return Rect.zero;
-    final pos = box.localToGlobal(Offset.zero, ancestor: overlay);
-    return pos & box.size;
+    final overlayBox = context.findRenderObject() as RenderBox?;
+    if (box == null || overlayBox == null || !box.hasSize) return Rect.zero;
+    // box and overlayBox are siblings in the Stack — overlay is NOT an ancestor
+    // of box, so localToGlobal(ancestor: overlay) would assert. Compute the
+    // relative position by subtracting global origins instead.
+    final globalPos = box.localToGlobal(Offset.zero);
+    final overlayOrigin = overlayBox.localToGlobal(Offset.zero);
+    return (globalPos - overlayOrigin) & box.size;
   }
 
   void _updateHoles() {
