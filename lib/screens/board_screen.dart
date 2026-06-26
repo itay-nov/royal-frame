@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:confetti/confetti.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
@@ -72,7 +73,7 @@ class _BoardScreenState extends State<BoardScreen>
   final List<GameState> _redo = [];
 
   // Current difficulty – persists across sessions via SharedPreferences.
-  GameDifficulty _difficulty = GameDifficulty.hard;
+  GameDifficulty _difficulty = GameDifficulty.classic;
   static const String _difficultyPrefKey = 'royalFrameDifficulty';
 
   Timer? _inactivityTimer;
@@ -144,6 +145,7 @@ class _BoardScreenState extends State<BoardScreen>
   // Tutorial (Phase A = blocking modals, Phase B/C = floating hints)
   bool _showWelcomeModals = false;
   bool _phaseAComplete = false; // guards against hints spawning during modals
+  bool _pendingTutorialStart = false;
   _HintType _activeHint = _HintType.none;
   int _clearHintStep = 0;
   Timer? _hintAutoTimer;
@@ -169,6 +171,7 @@ class _BoardScreenState extends State<BoardScreen>
 
   bool _isAudioInitialized = false;
   bool _audioUnlocked = false;
+  Future<void>? _unlockFuture;
 
   // Confetti
   late ConfettiController _confettiCtrl;
@@ -336,13 +339,15 @@ class _BoardScreenState extends State<BoardScreen>
   Future<void> _loadSavedDifficulty() async {
     if (widget.existingGame != null) return;
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString(_difficultyPrefKey) ?? 'hard';
+    final saved = prefs.getString(_difficultyPrefKey) ?? 'classic';
     if (!mounted) return;
     setState(() {
       _difficulty = switch (saved) {
-        'medium'  => GameDifficulty.medium,
-        'extreme' => GameDifficulty.extreme,
-        _         => GameDifficulty.hard,
+        'easy'               => GameDifficulty.easy,
+        'medium'             => GameDifficulty.medium,
+        'classic' || 'hard'  => GameDifficulty.classic,
+        'expert' || 'extreme'=> GameDifficulty.expert,
+        _                    => GameDifficulty.classic,
       };
     });
   }
@@ -357,15 +362,21 @@ class _BoardScreenState extends State<BoardScreen>
   // ── Tutorial system ────────────────────────────────────────────────────────
 
   Future<void> _initTutorial() async {
+    if (widget.existingGame != null && !widget.forceTutorial) return;
+    await TutorialManager.syncFromFirestore();
     final shouldRun =
         await TutorialManager.init(force: widget.forceTutorial);
     if (!mounted) return;
     if (shouldRun) {
-      setState(() => _showWelcomeModals = true);
-      _inactivityTimer?.cancel();
-      _hintPulseCtrl.stop();
-      _hintCurrentCard = false;
-      _hintedPair.clear();
+      if (widget.showNewGamePicker) {
+        _pendingTutorialStart = true;
+      } else {
+        setState(() => _showWelcomeModals = true);
+        _inactivityTimer?.cancel();
+        _hintPulseCtrl.stop();
+        _hintCurrentCard = false;
+        _hintedPair.clear();
+      }
     }
   }
 
@@ -640,7 +651,7 @@ class _BoardScreenState extends State<BoardScreen>
   void _unlockAudio() {
     if (_audioUnlocked) return;
     _audioUnlocked = true;
-    _doUnlock();
+    _unlockFuture = _doUnlock();
   }
 
   Future<void> _doUnlock() async {
@@ -745,6 +756,8 @@ class _BoardScreenState extends State<BoardScreen>
   Future<void> _playPop() async {
     if (_isMuted || !mounted || _phaseTransitionBlocking) return;
     try {
+      if (!_isAudioInitialized) await _initAudio();
+      if (_unlockFuture != null) await _unlockFuture;
       await _popPlayer.setVolume(1.0);
       await _popPlayer.seek(Duration.zero);
       if (!mounted) return;
@@ -755,6 +768,8 @@ class _BoardScreenState extends State<BoardScreen>
   Future<void> _playPlace() async {
     if (_isMuted || !mounted) return;
     try {
+      if (!_isAudioInitialized) await _initAudio();
+      if (_unlockFuture != null) await _unlockFuture;
       await _placePlayer.setVolume(1.0);
       await _placePlayer.seek(Duration.zero);
       if (!mounted) return;
@@ -850,17 +865,25 @@ class _BoardScreenState extends State<BoardScreen>
       _statsUpdatedThisGame = false;
       _clearedAtLeastOnePairThisPhase = false;
     });
-    // If restarting mid-tutorial, reset hints to fill-phase tracking.
+    // Clear any lingering tutorial state when starting a new game.
     _hintAutoTimer?.cancel();
-    _activeHint = _HintType.none;
     _clearHintStep = 0;
-    if (TutorialManager.isActive && _phaseAComplete) {
-      TutorialManager.advance(TutorialPhase.fillHints);
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => _evaluateFillHint());
-    }
+    TutorialManager.isActive = false;
+    TutorialManager.phase = TutorialPhase.done;
+    setState(() {
+      _showWelcomeModals = false;
+      _activeHint = _HintType.none;
+    });
     _restartHintTimer();
     _startUITimer();
+    if (_pendingTutorialStart) {
+      _pendingTutorialStart = false;
+      _inactivityTimer?.cancel();
+      _hintPulseCtrl.stop();
+      _hintCurrentCard = false;
+      _hintedPair.clear();
+      setState(() => _showWelcomeModals = true);
+    }
   }
 
   // ── End-state ──────────────────────────────────────────────────────────────
@@ -879,9 +902,10 @@ class _BoardScreenState extends State<BoardScreen>
       if (!_xpAwardedThisGame) {
         _xpAwardedThisGame = true;
         final xp = switch (_difficulty) {
+          GameDifficulty.easy    => 125,
           GameDifficulty.medium  => 250,
-          GameDifficulty.hard    => 500,
-          GameDifficulty.extreme => 1000,
+          GameDifficulty.classic => 500,
+          GameDifficulty.expert  => 1000,
         };
         XpService.addXP(xp);
       }
@@ -922,9 +946,10 @@ class _BoardScreenState extends State<BoardScreen>
       if (!_xpAwardedThisGame) {
         _xpAwardedThisGame = true;
         final xp = switch (_difficulty) {
+          GameDifficulty.easy    => 12,
           GameDifficulty.medium  => 25,
-          GameDifficulty.hard    => 50,
-          GameDifficulty.extreme => 100,
+          GameDifficulty.classic => 50,
+          GameDifficulty.expert  => 100,
         };
         XpService.addXP(xp);
       }
@@ -1130,6 +1155,24 @@ class _BoardScreenState extends State<BoardScreen>
     }
 
     if (game.phase == Phase.fill) {
+      // Easy mode: tapping an occupied numOrAce cell toggles it for pair-clearing.
+      if (game.difficulty == GameDifficulty.easy && game.cells[i] != null) {
+        if (_isAnimatingClear) return;
+        setState(() {
+          game.toggleSelectForClear(i);
+          if (game.selectedForClear.length == 2) {
+            if (game.canClearSelection) {
+              _doClear();
+            } else {
+              _flashError(game.selectedForClear.toList());
+              game.selectedForClear.clear();
+            }
+          }
+        });
+        _restartHintTimer();
+        return;
+      }
+
       if (game.cells[i] != null && !_moveMode) {
         _showOccupiedSlotWarning();
         return;
@@ -1276,13 +1319,18 @@ class _BoardScreenState extends State<BoardScreen>
                 ),
                 onPressed: () {
                   Navigator.of(context).pop();
-                  _inactivityTimer?.cancel();
-                  _hintPulseCtrl.stop();
-                  _hintCurrentCard = false;
-                  _hintedPair.clear();
-                  setState(() => _showWelcomeModals = true);
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!mounted) return;
+                    _inactivityTimer?.cancel();
+                    _hintPulseCtrl.stop();
+                    _hintCurrentCard = false;
+                    _hintedPair.clear();
+                    TutorialManager.isActive = true;
+                    TutorialManager.phase = TutorialPhase.modals;
+                    setState(() => _showWelcomeModals = true);
+                  });
                 },
-                icon: const Icon(Icons.help_outline),
+                icon: const Icon(Icons.smart_display),
                 label: Text(
                   _l.btnReplayTutorial,
                   style: const TextStyle(fontWeight: FontWeight.bold),
@@ -1986,7 +2034,7 @@ class _BoardScreenState extends State<BoardScreen>
                 borderWidth = 3.5;
               }
 
-              if (game.phase == Phase.clear && selected) {
+              if (selected && (game.phase == Phase.clear || (game.phase == Phase.fill && game.difficulty == GameDifficulty.easy))) {
                 borderColor = kSelectionHighlight;
                 borderWidth = 3.5;
               }
@@ -2128,15 +2176,17 @@ class _BoardScreenState extends State<BoardScreen>
   }
 
   Color get _difficultyColor => switch (_difficulty) {
+        GameDifficulty.easy    => const Color(0xFF64B5F6),
         GameDifficulty.medium  => const Color(0xFF4CAF50),
-        GameDifficulty.hard    => kGold,
-        GameDifficulty.extreme => const Color(0xFFFF5252),
+        GameDifficulty.classic => kGold,
+        GameDifficulty.expert  => const Color(0xFFFF5252),
       };
 
   String get _difficultyLabel => switch (_difficulty) {
+        GameDifficulty.easy    => _lang == AppLang.he ? 'קל'     : 'EASY',
         GameDifficulty.medium  => _lang == AppLang.he ? 'בינוני' : 'MEDIUM',
-        GameDifficulty.hard    => _lang == AppLang.he ? 'קשה'    : 'HARD',
-        GameDifficulty.extreme => _lang == AppLang.he ? 'קיצוני' : 'EXTREME',
+        GameDifficulty.classic => _lang == AppLang.he ? 'קלאסי'  : 'CLASSIC',
+        GameDifficulty.expert  => _lang == AppLang.he ? 'מומחה'  : 'EXPERT',
       };
 
   @override
@@ -2149,7 +2199,7 @@ class _BoardScreenState extends State<BoardScreen>
         .difference(game.startTime)
         .inSeconds;
 
-    final bool isExtreme = game.difficulty == GameDifficulty.extreme;
+    final bool isExtreme = game.difficulty == GameDifficulty.expert;
     final int displaySecs =
         isExtreme ? max(0, _extremeSeconds - elapsedSecs) : elapsedSecs;
     final bool isCountdown = isExtreme;
@@ -2403,9 +2453,9 @@ class _BoardScreenState extends State<BoardScreen>
                       width: 38,
                       child: PopupMenuButton<String>(
                         icon: const Icon(
-                          Icons.more_vert,
+                          Icons.settings_outlined,
                           color: kGold,
-                          size: 28,
+                          size: 22,
                         ),
                         padding: EdgeInsets.zero,
                         color: kBurgundyLight,
@@ -2418,7 +2468,18 @@ class _BoardScreenState extends State<BoardScreen>
                           if (value == 'rules')
                             showDialog(
                                 context: context,
-                                builder: (_) => RulesDialog(lang: _lang));
+                                builder: (_) => RulesDialog(
+                                  lang: _lang,
+                                  onReplayTutorial: () {
+                                    _inactivityTimer?.cancel();
+                                    _hintPulseCtrl.stop();
+                                    _hintCurrentCard = false;
+                                    _hintedPair.clear();
+                                    TutorialManager.isActive = true;
+                                    TutorialManager.phase = TutorialPhase.modals;
+                                    setState(() => _showWelcomeModals = true);
+                                  },
+                                ));
                           else if (value == 'difficulty')
                             _showDifficultyPicker();
                           else if (value == 'cosmetics')
@@ -2759,6 +2820,7 @@ class _BoardScreenState extends State<BoardScreen>
                           _phaseAComplete = true;
                         });
                         TutorialManager.advance(TutorialPhase.fillHints);
+                        TutorialManager.complete();
                         WidgetsBinding.instance.addPostFrameCallback(
                           (_) => _evaluateFillHint(),
                         );
@@ -3056,16 +3118,18 @@ class _BoardScreenState extends State<BoardScreen>
         baseScore + winBonus + effBonus + speedBonus;
 
     final double multiplier = switch (_difficulty) {
+      GameDifficulty.easy    => 0.25,
       GameDifficulty.medium  => 0.5,
-      GameDifficulty.hard    => 1.0,
-      GameDifficulty.extreme => 2.0,
+      GameDifficulty.classic => 1.0,
+      GameDifficulty.expert  => 2.0,
     };
     final int totalScore = (rawTotal * multiplier).round();
 
     final int xpGained = switch (_difficulty) {
+      GameDifficulty.easy    => 125,
       GameDifficulty.medium  => 250,
-      GameDifficulty.hard    => 500,
-      GameDifficulty.extreme => 1000,
+      GameDifficulty.classic => 500,
+      GameDifficulty.expert  => 1000,
     };
 
     const textShadow = [
@@ -3184,10 +3248,37 @@ class _BoardScreenState extends State<BoardScreen>
 
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: kGoldLight,
+                  foregroundColor: kGold,
+                  backgroundColor: const Color(0x448B6914),
                   side: const BorderSide(color: kGold, width: 1.5),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 20, vertical: 10),
+                  minimumSize: const Size(double.infinity, 52),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                ),
+                onPressed: _restartCurrentGame,
+                icon: const Icon(Icons.refresh),
+                label: Text(_l.winBtn, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+              const SizedBox(height: 10),
+
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kGold,
+                  side: const BorderSide(color: kGold, width: 1.5),
+                  minimumSize: const Size(double.infinity, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                ),
+                onPressed: _openDifficultyPicker,
+                icon: const Icon(Icons.tune, size: 18),
+                label: Text(_lang == AppLang.he ? 'בחר רמה' : 'Change Difficulty',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kGold,
+                  side: const BorderSide(color: kGold, width: 1.5),
+                  minimumSize: const Size(double.infinity, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 ),
                 onPressed: () => _shareVictory(totalScore),
                 icon: const Icon(Icons.share, size: 18),
@@ -3196,12 +3287,18 @@ class _BoardScreenState extends State<BoardScreen>
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
-              const SizedBox(height: 10),
-
-              FilledButton.icon(
-                onPressed: _restartCurrentGame,
-                icon: const Icon(Icons.refresh),
-                label: Text(_l.winBtn),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                style: TextButton.styleFrom(
+                  foregroundColor: kGoldLight,
+                  backgroundColor: Colors.transparent,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  side: BorderSide.none,
+                ),
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.home_outlined, size: 16),
+                label: Text(_lang == AppLang.he ? 'תפריט ראשי' : 'Main Menu',
+                  style: const TextStyle(fontSize: 13)),
               ),
             ],
           ),
@@ -3293,9 +3390,10 @@ class _BoardScreenState extends State<BoardScreen>
     ];
 
     final int xpGained = switch (_difficulty) {
+      GameDifficulty.easy    => 12,
       GameDifficulty.medium  => 25,
-      GameDifficulty.hard    => 50,
-      GameDifficulty.extreme => 100,
+      GameDifficulty.classic => 50,
+      GameDifficulty.expert  => 100,
     };
 
     return Container(
@@ -3399,10 +3497,37 @@ class _BoardScreenState extends State<BoardScreen>
 
               OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: kGoldLight,
-                  side: const BorderSide(color: kGoldDark, width: 1.5),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 20, vertical: 10),
+                  foregroundColor: kGold,
+                  backgroundColor: const Color(0x448B6914),
+                  side: const BorderSide(color: kGold, width: 1.5),
+                  minimumSize: const Size(double.infinity, 52),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                ),
+                onPressed: _restartCurrentGame,
+                icon: const Icon(Icons.refresh),
+                label: Text(_l.lossBtn, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+              const SizedBox(height: 10),
+
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kGold,
+                  side: const BorderSide(color: kGold, width: 1.5),
+                  minimumSize: const Size(double.infinity, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                ),
+                onPressed: _openDifficultyPicker,
+                icon: const Icon(Icons.tune, size: 18),
+                label: Text(_lang == AppLang.he ? 'בחר רמה' : 'Change Difficulty',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kGold,
+                  side: const BorderSide(color: kGold, width: 1.5),
+                  minimumSize: const Size(double.infinity, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 ),
                 onPressed: _shareGameOver,
                 icon: const Icon(Icons.share, size: 18),
@@ -3412,12 +3537,17 @@ class _BoardScreenState extends State<BoardScreen>
                 ),
               ),
               const SizedBox(height: 8),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                    backgroundColor: kBlockedBorder),
-                onPressed: _restartCurrentGame,
-                icon: const Icon(Icons.refresh),
-                label: Text(_l.lossBtn),
+              TextButton.icon(
+                style: TextButton.styleFrom(
+                  foregroundColor: kGoldLight,
+                  backgroundColor: Colors.transparent,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  side: BorderSide.none,
+                ),
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.home_outlined, size: 16),
+                label: Text(_lang == AppLang.he ? 'תפריט ראשי' : 'Main Menu',
+                  style: const TextStyle(fontSize: 13)),
               ),
             ],
           ),
@@ -3460,25 +3590,33 @@ class _DifficultyPickerDialogState
     final isHe = widget.lang == AppLang.he;
     return [
       (
-        diff: GameDifficulty.medium,
-        emoji: '☀️',
-        name: isHe ? 'בינוני' : 'Medium',
-        subtitle: isHe ? 'ללא מלכים — 8 תאי זבל.\nניקוד ×0.5' : 'No Kings — 8 dump slots.\nScore ×0.5',
+        diff: GameDifficulty.easy,
+        emoji: '🌱',
+        name: isHe ? 'קל' : 'Easy',
+        subtitle: isHe ? 'מפנים זוגות מתי שרוצים.\nניקוד ×0.25' : 'Clear pairs whenever you want.\nScore ×0.25',
         accentLight: const Color(0xFF4CAF50),
         accentDark: const Color(0xFF2E7D32),
       ),
       (
-        diff: GameDifficulty.hard,
+        diff: GameDifficulty.medium,
+        emoji: '☀️',
+        name: isHe ? 'בינוני' : 'Medium',
+        subtitle: isHe ? 'ללא מלכים — 8 תאי זבל.\nניקוד ×0.5' : 'No Kings — 8 dump slots.\nScore ×0.5',
+        accentLight: const Color(0xFF64B5F6),
+        accentDark: const Color(0xFF1565C0),
+      ),
+      (
+        diff: GameDifficulty.classic,
         emoji: '⚔️',
-        name: isHe ? 'קשה' : 'Hard',
+        name: isHe ? 'קלאסי' : 'Classic',
         subtitle: isHe ? 'חוקים רגילים.\nניקוד ×1.0' : 'Standard rules.\nScore ×1.0',
         accentLight: const Color(0xFFD4AF37),
         accentDark: const Color(0xFF9A7B1A),
       ),
       (
-        diff: GameDifficulty.extreme,
+        diff: GameDifficulty.expert,
         emoji: '💣',
-        name: isHe ? 'קיצוני' : 'Extreme',
+        name: isHe ? 'מומחה' : 'Expert',
         subtitle: isHe ? 'פצצה 3 דקות + מוות פתאומי.\nניקוד ×2.0' : '3-min bomb + Sudden Death.\nScore ×2.0',
         accentLight: const Color(0xFFFF5252),
         accentDark: const Color(0xFFB71C1C),

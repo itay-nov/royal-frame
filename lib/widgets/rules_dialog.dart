@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme_constants.dart';
 import '../utils/localization.dart';
-import '../services/tutorial_manager.dart';
 
 class _RulePage {
   final Color color;
@@ -63,8 +62,13 @@ const List<_RulePage> _enPages = [
 ];
 
 class RulesDialog extends StatefulWidget {
-  const RulesDialog({super.key, required this.lang});
+  const RulesDialog({
+    super.key,
+    required this.lang,
+    required this.onReplayTutorial,
+  });
   final AppLang lang;
+  final VoidCallback onReplayTutorial;
 
   @override
   State<RulesDialog> createState() => _RulesDialogState();
@@ -218,14 +222,17 @@ class _RulesDialogState extends State<RulesDialog> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   OutlinedButton.icon(
-                    icon: const Icon(Icons.replay, color: kGoldLight),
-                    label: Text(isHe ? 'הפעל מדריך מחדש' : 'Replay Tutorial',
+                    icon: const Icon(Icons.smart_display, color: kGoldLight),
+                    label: Text(
+                        isHe ? 'מדריך אינטראקטיבי' : 'Interactive Tutorial',
                         style: const TextStyle(color: kGoldLight)),
                     style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: kGold)),
                     onPressed: () {
+                      final callback = widget.onReplayTutorial;
                       Navigator.pop(context);
-                      TutorialManager.reset();
+                      WidgetsBinding.instance
+                          .addPostFrameCallback((_) => callback());
                     },
                   ),
                   const SizedBox(width: 16),

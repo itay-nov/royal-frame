@@ -8,7 +8,7 @@ enum SlotType { kingCorner, queenEdge, jackEdge, innerDump }
 enum Phase { fill, clear, winner, gameOver }
 
 // Difficulty levels exposed to the rest of the app.
-enum GameDifficulty { medium, hard, extreme }
+enum GameDifficulty { easy, medium, classic, expert }
 
 const int kMaxCardsForClear = 2;
 
@@ -164,21 +164,22 @@ class GameState {
 
   /// Score multiplier applied to the final score breakdown in the win overlay.
   double get scoreMultiplier => switch (difficulty) {
+    GameDifficulty.easy    => 0.25,
     GameDifficulty.medium  => 0.5,
-    GameDifficulty.hard    => 1.0,
-    GameDifficulty.extreme => 2.0,
+    GameDifficulty.classic => 1.0,
+    GameDifficulty.expert  => 2.0,
   };
 
   // ── Factory ────────────────────────────────────────────────────────────────
 
   factory GameState.newGame({
     int? seed,
-    GameDifficulty difficulty = GameDifficulty.hard,
+    GameDifficulty difficulty = GameDifficulty.classic,
   }) {
     final layout = buildBoardLayout();
 
-    // Medium: replace king-corner slots with inner dumps (no kings in play).
-    if (difficulty == GameDifficulty.medium) {
+    // Easy/Medium: replace king-corner slots with inner dumps (no kings in play).
+    if (difficulty == GameDifficulty.easy || difficulty == GameDifficulty.medium) {
       for (final i in [0, 3, 12, 15]) layout[i] = SlotType.innerDump;
     }
 
@@ -194,8 +195,8 @@ class GameState {
       deck.addAll([
         CardModel(suit, const Jack()),
         CardModel(suit, const Queen()),
-        // Medium: omit kings entirely.
-        if (difficulty != GameDifficulty.medium)
+        // Easy/Medium: omit kings entirely.
+        if (difficulty != GameDifficulty.easy && difficulty != GameDifficulty.medium)
           CardModel(suit, const King()),
       ]);
     }
@@ -219,7 +220,7 @@ class GameState {
       lifelinePeekAvailable: true,
       peekActiveNow: false,
       difficulty: difficulty,
-      isSuddenDeath: difficulty == GameDifficulty.extreme,
+      isSuddenDeath: difficulty == GameDifficulty.expert,
       score: 0,
       startTime: DateTime.now(),
       totalCardsDrawn: 1,
@@ -468,7 +469,8 @@ class GameState {
   }
 
   void toggleSelectForClear(int index) {
-    if (phase != Phase.clear) return;
+    final allowedInFill = phase == Phase.fill && difficulty == GameDifficulty.easy;
+    if (phase != Phase.clear && !allowedInFill) return;
     final c = cells[index];
     if (c == null || !c.isNumOrAce) return;
     if (!selectedForClear.add(index)) selectedForClear.remove(index);
@@ -492,6 +494,45 @@ class GameState {
     }
     selectedForClear.clear();
     score += 50;
+    _evaluatePhaseAfterChange();
+  }
+
+  /// Finds all greedy 11-sum pairs on the board without modifying state.
+  /// Used by Easy mode to discover what to auto-remove after each placement.
+  List<(List<int>, List<CardModel>)> findEasyAutoPairs() {
+    final result = <(List<int>, List<CardModel>)>[];
+    final used = <int>{};
+    for (int a = 0; a < 16; a++) {
+      if (used.contains(a)) continue;
+      final ca = cells[a];
+      if (ca == null || !ca.isNumOrAce) continue;
+      for (int b = a + 1; b < 16; b++) {
+        if (used.contains(b)) continue;
+        final cb = cells[b];
+        if (cb == null || !cb.isNumOrAce) continue;
+        if (ca.valueForSum + cb.valueForSum == 11) {
+          used..add(a)..add(b);
+          result.add(([a, b], [ca, cb]));
+          break;
+        }
+      }
+    }
+    return result;
+  }
+
+  /// Removes the pairs previously found by [findEasyAutoPairs] and evaluates
+  /// the game phase. Call only after the UI has captured cell positions for
+  /// animation.
+  void autoRemoveFoundPairs(List<(List<int>, List<CardModel>)> pairs) {
+    for (final (indices, cards) in pairs) {
+      for (int k = 0; k < indices.length; k++) {
+        clearedCards.add(cards[k]);
+        cells[indices[k]] = null;
+        isBlocked[indices[k]] = false;
+      }
+      score += 50;
+    }
+    selectedForClear.clear();
     _evaluatePhaseAfterChange();
   }
 

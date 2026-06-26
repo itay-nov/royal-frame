@@ -163,6 +163,39 @@ class DbService {
     return (countResult.count ?? 0) + 1;
   }
 
+  // ── Streak sync ───────────────────────────────────────────────────────────
+
+  Future<void> saveStreak(int streak, String lastDate) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    try {
+      await _db.collection('players').doc(user.uid).set(
+        {'streak': streak, 'streakLastDate': lastDate},
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      debugPrint('saveStreak failed: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>?> loadStreak() async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+    try {
+      final doc = await _db.collection('players').doc(user.uid).get();
+      if (!doc.exists) return null;
+      final data = doc.data()!;
+      if (!data.containsKey('streak')) return null;
+      return {
+        'streak': data['streak'],
+        'streakLastDate': data['streakLastDate'] ?? '',
+      };
+    } catch (e) {
+      debugPrint('loadStreak failed: $e');
+      return null;
+    }
+  }
+
   // ── Legacy compat ──────────────────────────────────────────────────────────
 
   Future<List<PlayerModel>> getLeaderboard({

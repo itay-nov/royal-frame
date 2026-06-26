@@ -98,7 +98,7 @@ class L {
             'You must clear all possible pairs before you can proceed to place cards again! '
             'Win is declared only when the frame holds 12 royals, the deck is empty, and no 11-pairs remain. '
             'Fill the frame to win. Enjoy!';
-  String get btnReplayTutorial => isHe ? 'הפעל מדריך מחדש' : 'Replay Tutorial';
+  String get btnReplayTutorial => isHe ? 'מדריך אינטראקטיבי' : 'Interactive Tutorial';
   // Main Menu & Leaderboard Strings
   String get menuResume => isHe ? 'המשך משחק' : 'Resume Game';
   String get menuNewGame => isHe ? 'משחק חדש' : 'New Game';
