@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
@@ -14,6 +16,10 @@ void main() async {
 
   // אתחול פיירבייס עם האופציות שנוצרו ב-configure
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  if (!kIsWeb && Platform.isAndroid) {
+    await MobileAds.instance.initialize();
+  }
 
   await FirebaseAppCheck.instance.activate(
     // Android/iOS: Play Integrity / App Attest in release; debug provider in debug.
