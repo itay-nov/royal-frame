@@ -24,7 +24,12 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
     _loadAd();
   }
 
-  void _loadAd() {
+  Future<void> _loadAd() async {
+    // Guarantee initialization is complete before requesting an ad.
+    await MobileAds.instance.initialize();
+
+    if (!mounted) return;
+
     final adUnitId = kReleaseMode ? _realAdUnitId : _testAdUnitId;
     _ad = BannerAd(
       adUnitId: adUnitId,
