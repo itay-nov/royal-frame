@@ -244,10 +244,11 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       body: Directionality(
         textDirection:
             _lang == AppLang.he ? TextDirection.rtl : TextDirection.ltr,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
+        child: SingleChildScrollView(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
               const Text('👑', style: TextStyle(fontSize: 60)),
               const SizedBox(height: 8),
               const Text(
@@ -323,6 +324,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );

@@ -19,6 +19,9 @@ void main() async {
 
   if (!kIsWeb && Platform.isAndroid) {
     await MobileAds.instance.initialize();
+    MobileAds.instance.updateRequestConfiguration(
+      RequestConfiguration(testDeviceIds: ['9158A269B1F012D5358CF30498DBF532']),
+    );
   }
 
   await FirebaseAppCheck.instance.activate(
