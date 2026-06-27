@@ -36,6 +36,9 @@
         <meta-data
             android:name="firebase_app_check_debug_token"
             android:value="8A1383AF-6CB4-4BEA-A415-5A136B82B7B0" />
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-3688029896617428~6073005202" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

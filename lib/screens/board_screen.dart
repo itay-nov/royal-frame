@@ -19,6 +19,7 @@ import '../widgets/tutorial_overlay.dart';
 import '../widgets/floating_hint.dart';
 import '../widgets/duel_result_overlay.dart';
 import '../widgets/rules_dialog.dart';
+import '../widgets/banner_ad_widget.dart';
 import '../services/tutorial_manager.dart';
 import '../services/db_service.dart';
 import '../services/haptic_service.dart';
@@ -2968,6 +2969,7 @@ class _BoardScreenState extends State<BoardScreen>
               ),
             ),
           ),
+          bottomNavigationBar: buildBannerAd(),
           ),      // Screenshot
         ),
       ),

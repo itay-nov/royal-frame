@@ -2,23 +2,21 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Players ──────────────────────────────────────────────────────────────
     match /players/{uid} {
       allow read:   if request.auth != null;
       allow create: if request.auth != null
                     && request.auth.uid == uid
                     && validPlayerCreate();
-      // Full stats update (score / wins) OR a tutorial-only merge write.
       allow update: if request.auth != null
                     && request.auth.uid == uid
                     && (
                       (validPlayerUpdate() && notTooSoon())
                       || validTutorialUpdate()
+                      || validStreakUpdate()
                     );
       allow delete: if false;
     }
 
-    // ── Duels ─────────────────────────────────────────────────────────────────
     match /duels/{code} {
       allow read:   if request.auth != null;
       allow create: if request.auth != null
@@ -30,12 +28,9 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ── Deny everything else ──────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }
-
-    // ── Validation helpers ────────────────────────────────────────────────────
 
     function validDisplayName(name) {
       return name is string
@@ -49,7 +44,6 @@ service cloud.firestore {
           && score <= 500000;
     }
 
-    // Rate limiting: minimum 30 seconds between score updates.
     function notTooSoon() {
       return !('lastUpdated' in resource.data)
           || request.time > resource.data.lastUpdated + duration.value(30, 's');
@@ -63,7 +57,7 @@ service cloud.firestore {
           && validDisplayName(d.displayName)
           && validScore(d.highScore)
           && validScore(d.totalScore)
-          && d.highScore   == d.totalScore   // first game: highScore == totalScore
+          && d.highScore   == d.totalScore
           && d.wins        is int && d.wins        >= 0 && d.wins        <= 1
           && d.totalGames  is int && d.totalGames  >= 0 && d.totalGames  <= 1;
     }
@@ -74,20 +68,26 @@ service cloud.firestore {
       return validDisplayName(d.displayName)
           && validScore(d.highScore)
           && validScore(d.totalScore)
-          && d.highScore   >= e.highScore      // high score never decreases
-          && d.totalScore  >= e.totalScore     // total score never decreases
-          && d.wins        >= e.wins           // win count never decreases
-          && d.totalGames  >= e.totalGames     // game count never decreases
-          && d.totalGames  <= e.totalGames + 1 // max 1 game per update
-          && d.uid         == e.uid;           // uid is immutable
+          && d.highScore   >= e.highScore
+          && d.totalScore  >= e.totalScore
+          && d.wins        >= e.wins
+          && d.totalGames  >= e.totalGames
+          && d.totalGames  <= e.totalGames + 1
+          && d.uid         == e.uid;
     }
 
     function validTutorialUpdate() {
       let d = request.resource.data;
       let e = resource.data;
-      // Only allows setting hasSeenTutorial = true; no other field may change.
       return d.get('hasSeenTutorial', false) == true
           && d.diff(e).affectedKeys().hasOnly(['hasSeenTutorial']);
+    }
+
+    function validStreakUpdate() {
+      let d = request.resource.data;
+      let e = resource.data;
+      return d.diff(e).affectedKeys().hasOnly(['streak', 'streakLastDate'])
+          && d.uid == e.uid;
     }
   }
 }
