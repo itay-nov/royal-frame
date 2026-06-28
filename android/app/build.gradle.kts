@@ -29,8 +29,8 @@ android {
         // versionCode and versionName are injected by the Flutter Gradle plugin
         // from pubspec.yaml (version: 1.0.3+4 → versionName=1.0.3, versionCode=4).
         // Do NOT hardcode them here.
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        versionCode = 7
+        versionName = "1.1.0"
     }
 
     buildTypes {
