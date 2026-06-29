@@ -123,7 +123,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      print('DEBUG - Error during Google Login catch: $e');
       _showError('DEBUG ERROR: $e');
     }
   }
