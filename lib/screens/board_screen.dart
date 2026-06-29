@@ -302,7 +302,6 @@ class _BoardScreenState extends State<BoardScreen>
       isHost: isHost,
       newSeed: newSeed,
     ).catchError((e) {
-      debugPrint('signalRematch failed: $e');
       if (mounted) setState(() => _myRematchReady = false);
     });
   }
@@ -333,7 +332,6 @@ class _BoardScreenState extends State<BoardScreen>
     try {
       await DuelService.syncScore(_duelSession!.duelId, game.score);
     } catch (e) {
-      debugPrint('DuelService.syncScore failed: $e');
     }
   }
 
@@ -927,7 +925,6 @@ class _BoardScreenState extends State<BoardScreen>
             );
             if (mounted) _duelFinishedReported = true;
           } catch (e) {
-            debugPrint('DuelService.markFinished (winner) failed: $e');
           }
         }();
       }
@@ -971,7 +968,6 @@ class _BoardScreenState extends State<BoardScreen>
             );
             if (mounted) _duelFinishedReported = true;
           } catch (e) {
-            debugPrint('DuelService.markFinished (loser) failed: $e');
           }
         }();
       }
@@ -1450,7 +1446,7 @@ class _BoardScreenState extends State<BoardScreen>
   static String get _shareLink {
     if (kIsWeb) return 'https://royal-frame.netlify.app';
     if (Platform.isAndroid) {
-      return 'https://play.google.com/store/apps/details?id=com.royalframe.app';
+      return 'https://play.google.com/store/apps/details?id=com.itay.royalframegame';
     }
     return 'https://royal-frame.netlify.app';
   }

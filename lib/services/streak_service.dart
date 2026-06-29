@@ -33,12 +33,9 @@ class StreakService {
         final remoteStreak = (remote['streak'] as num?)?.toInt() ?? 0;
         if (remoteStreak > _streak) {
           _streak = remoteStreak;
-          debugPrint('[STREAK] load: already today — took Firestore value $_streak (was $saved locally)');
         } else {
-          debugPrint('[STREAK] load: already today — kept local value $_streak (Firestore had $remoteStreak)');
         }
       } else {
-        debugPrint('[STREAK] load: already today — no Firestore data, local value $_streak');
       }
       DbService().saveStreak(_streak, today);
       return;
@@ -64,12 +61,9 @@ class StreakService {
       final remoteStreak = (remote['streak'] as num?)?.toInt() ?? 0;
       if (remoteStreak > _streak) {
         _streak = remoteStreak;
-        debugPrint('[STREAK] load: new day — took Firestore value $_streak (local computed $localComputed)');
       } else {
-        debugPrint('[STREAK] load: new day — kept local computed value $_streak (Firestore had $remoteStreak)');
       }
     } else {
-      debugPrint('[STREAK] load: new day — no Firestore data for today, local computed $_streak');
     }
 
     await SecureStorageService.writeInt(_keyStreak, _streak);

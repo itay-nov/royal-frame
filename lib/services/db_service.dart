@@ -61,7 +61,6 @@ class DbService {
         }
       });
     } catch (e) {
-      debugPrint('updatePlayerStats failed: $e');
     }
   }
 
@@ -174,7 +173,6 @@ class DbService {
         SetOptions(merge: true),
       );
     } catch (e) {
-      debugPrint('saveStreak failed: $e');
     }
   }
 
@@ -191,7 +189,6 @@ class DbService {
         'streakLastDate': data['streakLastDate'] ?? '',
       };
     } catch (e) {
-      debugPrint('loadStreak failed: $e');
       return null;
     }
   }

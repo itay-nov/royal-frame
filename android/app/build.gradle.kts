@@ -1,3 +1,14 @@
+import java.util.Properties
+import java.io.FileInputStream
+
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+} else {
+    println("Warning: key.properties not found")
+}
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -12,7 +23,15 @@ android {
     namespace = "com.itay.royalframegame"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
-
+   
+    signingConfigs {
+        create("release") {
+            keyAlias = keystoreProperties["keyAlias"] as String?
+            keyPassword = keystoreProperties["keyPassword"] as String?
+            storeFile = keystoreProperties["storeFile"]?.let { file(it as String) }
+            storePassword = keystoreProperties["storePassword"] as String?
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -29,16 +48,21 @@ android {
         // versionCode and versionName are injected by the Flutter Gradle plugin
         // from pubspec.yaml (version: 1.0.3+4 → versionName=1.0.3, versionCode=4).
         // Do NOT hardcode them here.
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+       // versionCode = 7
+       // versionName = "1.1.0"
     }
 
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = true
-            isShrinkResources = true
-            // Uses Flutter's default debug signing for now.
-            // Replace with a proper keystore config before publishing to Play Store.
+        signingConfig = signingConfigs.getByName("release")
+            
+        // הגדרות נוספות שמומלצות לפרודקשן
+        isMinifyEnabled = true
+        isShrinkResources = true
+        proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }
