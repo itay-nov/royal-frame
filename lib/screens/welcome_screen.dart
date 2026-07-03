@@ -98,7 +98,15 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('playerName', name);
-    await _authService.signInAnonymously(name);
+    final credential = await _authService.signInAnonymously(name);
+
+    // Create the player document immediately so a guest who hasn't finished
+    // a game yet still has a valid backend record. This keeps the startup
+    // session validation from treating them as stale on the next launch.
+    final uid = credential?.user?.uid;
+    if (uid != null) {
+      await DbService().ensurePlayerDoc(uid, name);
+    }
 
     setState(() => _isLoading = false);
     _goToMainMenu();
