@@ -209,7 +209,7 @@ class _HostTabState extends State<_HostTab> {
                   border: Border.all(color: kGold, width: 1.8),
                   boxShadow: [
                     BoxShadow(
-                      color: kGold.withOpacity(0.25),
+                      color: kGold.withValues(alpha: 0.25),
                       blurRadius: 20,
                     ),
                   ],
@@ -396,7 +396,7 @@ class _JoinTabState extends State<_JoinTab> {
                 counterText: '',
                 hintText: 'XXXXXX',
                 hintStyle: TextStyle(
-                  color: kGoldDark.withOpacity(0.5),
+                  color: kGoldDark.withValues(alpha: 0.5),
                   fontSize: 28,
                   letterSpacing: 8,
                 ),

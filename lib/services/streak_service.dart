@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'db_service.dart';
 import 'secure_storage_service.dart';
 
@@ -33,9 +32,7 @@ class StreakService {
         final remoteStreak = (remote['streak'] as num?)?.toInt() ?? 0;
         if (remoteStreak > _streak) {
           _streak = remoteStreak;
-        } else {
         }
-      } else {
       }
       DbService().saveStreak(_streak, today);
       return;
@@ -55,15 +52,12 @@ class StreakService {
     }
 
     // Firestore wins if it has a higher value for today (e.g. set on web).
-    final int localComputed = _streak;
     final remote = await DbService().loadStreak();
     if (remote != null && remote['streakLastDate'] == today) {
       final remoteStreak = (remote['streak'] as num?)?.toInt() ?? 0;
       if (remoteStreak > _streak) {
         _streak = remoteStreak;
-      } else {
       }
-    } else {
     }
 
     await SecureStorageService.writeInt(_keyStreak, _streak);

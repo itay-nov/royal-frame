@@ -1,7 +1,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Thin wrapper around [FlutterSecureStorage] that adds typed helpers for
-/// int, bool, and List<String> — since the underlying store is String-only.
+/// int, bool, and `List<String>` — since the underlying store is String-only.
 ///
 /// On Android: AES-256 via EncryptedSharedPreferences (hardware-backed key).
 /// On iOS: Keychain Services.

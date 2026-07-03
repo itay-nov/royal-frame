@@ -310,9 +310,10 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
               TextButton.icon(
                 onPressed: () async {
+                  final navigator = Navigator.of(context);
                   await AuthService().signOut();
                   if (!mounted) return;
-                  Navigator.of(context).pushReplacement(
+                  navigator.pushReplacement(
                     MaterialPageRoute(builder: (_) => const WelcomeScreen()),
                   );
                 },
@@ -334,7 +335,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     final targetLabel = _lang == AppLang.he ? 'English' : 'עברית';
     return OutlinedButton.icon(
       style: OutlinedButton.styleFrom(
-        backgroundColor: Colors.black.withOpacity(0.35),
+        backgroundColor: Colors.black.withValues(alpha: 0.35),
         foregroundColor: kGold,
         side: const BorderSide(color: kGold, width: 1.5),
         shape: RoundedRectangleBorder(
@@ -409,8 +410,8 @@ class _StreakBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: kBurgundyLight,
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: kGold.withOpacity(0.7), width: 1.5),
-        boxShadow: [BoxShadow(color: kGold.withOpacity(0.15), blurRadius: 10)],
+        border: Border.all(color: kGold.withValues(alpha: 0.7), width: 1.5),
+        boxShadow: [BoxShadow(color: kGold.withValues(alpha: 0.15), blurRadius: 10)],
       ),
       child: Text(
         label,
@@ -614,7 +615,7 @@ class _LeaderboardTabContentState extends State<_LeaderboardTabContent>
       );
       final userDataFuture = db.getCurrentUserData();
       final rankFuture = _currentUid != null
-          ? db.getUserRank(uid: _currentUid!, orderBy: widget.orderBy)
+          ? db.getUserRank(uid: _currentUid, orderBy: widget.orderBy)
           : Future<int>.value(0);
 
       final page = await pageFuture;
@@ -826,8 +827,8 @@ class _LeaderboardTabContentState extends State<_LeaderboardTabContent>
       margin: const EdgeInsets.only(bottom: 7),
       decoration: BoxDecoration(
         color: isCurrentUser
-            ? kGold.withOpacity(0.10)
-            : Colors.black.withOpacity(0.35),
+            ? kGold.withValues(alpha: 0.10)
+            : Colors.black.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isCurrentUser
@@ -838,7 +839,7 @@ class _LeaderboardTabContentState extends State<_LeaderboardTabContent>
         boxShadow: isCurrentUser
             ? [
                 BoxShadow(
-                  color: kGold.withOpacity(0.18),
+                  color: kGold.withValues(alpha: 0.18),
                   blurRadius: 10,
                   spreadRadius: 1,
                 ),
@@ -880,9 +881,9 @@ class _LeaderboardTabContentState extends State<_LeaderboardTabContent>
                 margin: const EdgeInsets.only(left: 6),
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: kGold.withOpacity(0.18),
+                  color: kGold.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: kGold.withOpacity(0.55)),
+                  border: Border.all(color: kGold.withValues(alpha: 0.55)),
                 ),
                 child: const Text(
                   'YOU',
@@ -920,7 +921,7 @@ class _LeaderboardTabContentState extends State<_LeaderboardTabContent>
         children: [
           Expanded(
             child: Divider(
-              color: kGoldDark.withOpacity(0.35),
+              color: kGoldDark.withValues(alpha: 0.35),
               thickness: 1,
             ),
           ),
@@ -929,7 +930,7 @@ class _LeaderboardTabContentState extends State<_LeaderboardTabContent>
             child: Text(
               '·  ·  ·',
               style: TextStyle(
-                color: kGoldDark.withOpacity(0.55),
+                color: kGoldDark.withValues(alpha: 0.55),
                 fontSize: 16,
                 letterSpacing: 4,
               ),
@@ -937,7 +938,7 @@ class _LeaderboardTabContentState extends State<_LeaderboardTabContent>
           ),
           Expanded(
             child: Divider(
-              color: kGoldDark.withOpacity(0.35),
+              color: kGoldDark.withValues(alpha: 0.35),
               thickness: 1,
             ),
           ),

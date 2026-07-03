@@ -12,7 +12,7 @@ class OverlayHolePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.saveLayer(Offset.zero & size, Paint());
-    canvas.drawColor(Colors.black.withOpacity(0.82), BlendMode.srcOver);
+    canvas.drawColor(Colors.black.withValues(alpha: 0.82), BlendMode.srcOver);
     final clear = Paint()..blendMode = BlendMode.clear;
     for (final r in holes) {
       if (r.width > 0 && r.height > 0) {
@@ -190,7 +190,7 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                   border: Border.all(color: kGold, width: 2),
                   boxShadow: [
                     BoxShadow(
-                      color: kGold.withOpacity(0.28),
+                      color: kGold.withValues(alpha: 0.28),
                       blurRadius: 28,
                       spreadRadius: 1,
                     ),

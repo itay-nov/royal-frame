@@ -3,15 +3,12 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:confetti/confetti.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../theme_constants.dart';
 import '../models/game_model.dart';
 import '../utils/localization.dart';
@@ -141,7 +138,7 @@ class _BoardScreenState extends State<BoardScreen>
 
   bool _showGameOverOverlay = false;
   bool _isAnimatingClear = false;
-  Set<int> _errorHighlights = {};
+  final Set<int> _errorHighlights = {};
 
   // Tutorial (Phase A = blocking modals, Phase B/C = floating hints)
   bool _showWelcomeModals = false;
@@ -332,6 +329,8 @@ class _BoardScreenState extends State<BoardScreen>
     try {
       await DuelService.syncScore(_duelSession!.duelId, game.score);
     } catch (e) {
+      // Swallowed: score sync is periodic — the next sync heals a missed one.
+      // Real logging lands with the resilience pass (Phase 3).
     }
   }
 
@@ -802,18 +801,6 @@ class _BoardScreenState extends State<BoardScreen>
     }
   }
 
-  void _redoAction() {
-    if (_redo.isEmpty) return;
-    _undo.add(game.clone());
-    setState(() {
-      game = _redo.removeLast();
-      _moveMode = false;
-      _moveFromIndex = null;
-      _showGameOverOverlay = game.phase == Phase.gameOver;
-    });
-    _restartHintTimer();
-  }
-
   // ── New-game flow ──────────────────────────────────────────────────────────
 
   // Shows the difficulty picker. On selection, calls _executeNewGame.
@@ -925,6 +912,8 @@ class _BoardScreenState extends State<BoardScreen>
             );
             if (mounted) _duelFinishedReported = true;
           } catch (e) {
+            // Swallowed: duel result reporting failure is handled with a
+            // retry + user-facing snack in the resilience pass (Phase 3).
           }
         }();
       }
@@ -968,6 +957,8 @@ class _BoardScreenState extends State<BoardScreen>
             );
             if (mounted) _duelFinishedReported = true;
           } catch (e) {
+            // Swallowed: duel result reporting failure is handled with a
+            // retry + user-facing snack in the resilience pass (Phase 3).
           }
         }();
       }
@@ -990,14 +981,6 @@ class _BoardScreenState extends State<BoardScreen>
   }
 
   // ── Sudden-death helpers ──────────────────────────────────────────────────
-
-  void _triggerSuddenDeath() {
-    HapticService.heavy();
-    game.phase = Phase.gameOver;
-    game.endTime ??= DateTime.now();
-    setState(() {});
-    _checkEndState();
-  }
 
   // Shows a double red-flash on the offending cells, then triggers game over.
   Future<void> _doubleFlashAndGameOver(List<int> indices) async {
@@ -1279,80 +1262,6 @@ class _BoardScreenState extends State<BoardScreen>
     return result;
   }
 
-  void _showRules() {
-    final isWide = MediaQuery.of(context).size.width > 700;
-    final content = Directionality(
-      textDirection:
-          _lang == AppLang.he ? TextDirection.rtl : TextDirection.ltr,
-      child: Container(
-        color: kBurgundyLight,
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _l.rulesTitle,
-              style: const TextStyle(
-                  color: kGold,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              _l.rulesBody,
-              style: const TextStyle(
-                  color: kGoldLight, fontSize: 14, height: 1.7),
-            ),
-            const SizedBox(height: 24),
-            Center(
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kGold,
-                  side: const BorderSide(color: kGold),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 20, vertical: 12),
-                ),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!mounted) return;
-                    _inactivityTimer?.cancel();
-                    _hintPulseCtrl.stop();
-                    _hintCurrentCard = false;
-                    _hintedPair.clear();
-                    TutorialManager.isActive = true;
-                    TutorialManager.phase = TutorialPhase.modals;
-                    setState(() => _showWelcomeModals = true);
-                  });
-                },
-                icon: const Icon(Icons.smart_display),
-                label: Text(
-                  _l.btnReplayTutorial,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (isWide) {
-      showDialog(
-        context: context,
-        builder: (_) => Dialog(child: SizedBox(width: 460, child: content)),
-      );
-    } else {
-      showModalBottomSheet(
-        context: context,
-        showDragHandle: true,
-        backgroundColor: kBurgundyLight,
-        builder: (_) => content,
-      );
-    }
-  }
 
   void _showDailyGoal() {
     final goal = DailyGoalService.current;
@@ -1514,95 +1423,6 @@ class _BoardScreenState extends State<BoardScreen>
     return 2;
   }
 
-  Widget _playingCardFallback(CardModel c,
-      {required double w, required double h}) {
-    final faceColor = isRed(c.suit) ? kCardRed : kCardBlack;
-    final large = w > kCardW;
-    return Container(
-      width: w,
-      height: h,
-      color: kCardWhite,
-      padding: const EdgeInsets.all(6),
-      child: Stack(children: [
-        Align(
-          alignment: Alignment.topLeft,
-          child: Text(
-            '${c.label}\n${suitSymbol(c.suit)}',
-            style: TextStyle(
-              fontSize: large ? 17.0 : 14.0,
-              fontWeight: FontWeight.w900,
-              height: 1.05,
-              color: faceColor,
-              fontFamily: 'Georgia',
-            ),
-          ),
-        ),
-        Align(
-          alignment: Alignment.center,
-          child: Text(
-            suitSymbol(c.suit),
-            style:
-                TextStyle(fontSize: large ? 36.0 : 28.0, color: faceColor),
-          ),
-        ),
-        Align(
-          alignment: Alignment.bottomRight,
-          child: Transform.rotate(
-            angle: pi,
-            child: Text(
-              '${c.label}\n${suitSymbol(c.suit)}',
-              style: TextStyle(
-                fontSize: large ? 17.0 : 14.0,
-                fontWeight: FontWeight.w900,
-                height: 1.05,
-                color: faceColor,
-                fontFamily: 'Georgia',
-              ),
-            ),
-          ),
-        ),
-      ]),
-    );
-  }
-
-  Widget _cardFaceImage(
-    CardModel c, {
-    double? width,
-    double? height,
-    BoxFit fit = BoxFit.cover,
-  }) {
-    return Image.network(
-      c.imageUrl,
-      width: width,
-      height: height,
-      fit: fit,
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) return child;
-        return _cardFaceFallbackSized(context, c, width, height);
-      },
-      errorBuilder: (context, _, __) =>
-          _cardFaceFallbackSized(context, c, width, height),
-    );
-  }
-
-  Widget _cardFaceFallbackSized(
-    BuildContext context,
-    CardModel c,
-    double? width,
-    double? height,
-  ) {
-    if (width != null && height != null && width > 0 && height > 0) {
-      return _playingCardFallback(c, w: width, h: height);
-    }
-    return LayoutBuilder(
-      builder: (context, constraints) => _playingCardFallback(
-        c,
-        w: constraints.maxWidth,
-        h: constraints.maxHeight,
-      ),
-    );
-  }
-
   Widget _playingCard(CardModel c, {bool large = false, bool dimmed = false}) {
     final w = large ? 90.0 : kCardW;
     final h = large ? 126.0 : kCardH;
@@ -1624,7 +1444,7 @@ class _BoardScreenState extends State<BoardScreen>
           boxShadow: isRoyal
               ? [
                   BoxShadow(
-                    color: kRoyalGlowColor.withOpacity(0.3),
+                    color: kRoyalGlowColor.withValues(alpha: 0.3),
                     blurRadius: 6,
                   )
                 ]
@@ -1651,18 +1471,6 @@ class _BoardScreenState extends State<BoardScreen>
     );
   }
 
-  Widget _gridCardFace(CardModel card) {
-    const innerPad = 3.0;
-    const imageRadius = 4.0;
-    return Padding(
-      padding: const EdgeInsets.all(innerPad),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(imageRadius),
-        child: _cardFaceImage(card),
-      ),
-    );
-  }
-
   Widget _cardBackImage() {
     final asset = XpService.equippedCardBackAsset;
     final fallback = XpService.equippedCardBackFallback;
@@ -1684,13 +1492,13 @@ class _BoardScreenState extends State<BoardScreen>
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: depth == 0
-              ? kGold.withOpacity(0.9)
-              : kGoldDark.withOpacity(0.75),
+              ? kGold.withValues(alpha: 0.9)
+              : kGoldDark.withValues(alpha: 0.75),
           width: depth == 0 ? 1.8 : 1.2,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.30 + depth * 0.06),
+            color: Colors.black.withValues(alpha: 0.30 + depth * 0.06),
             blurRadius: 2.5 + depth * 1.5,
             spreadRadius: depth * 0.3,
             offset: Offset(0.8 + depth * 0.6, 1.5 + depth * 1.2),
@@ -1714,7 +1522,7 @@ class _BoardScreenState extends State<BoardScreen>
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         border:
-            Border.all(color: kGoldDark.withOpacity(0.55), width: 1.6),
+            Border.all(color: kGoldDark.withValues(alpha: 0.55), width: 1.6),
       ),
     );
   }
@@ -1759,23 +1567,6 @@ class _BoardScreenState extends State<BoardScreen>
                   ),
               ],
             ),
-    );
-  }
-
-  Widget _emptyCardWidget({required String label}) {
-    return Container(
-      width: 72,
-      height: 100,
-      decoration: BoxDecoration(
-        color: kBurgundyLight,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: kGoldDark, width: 1.2),
-      ),
-      child: Center(
-        child: Text(label,
-            style: const TextStyle(
-                color: kGold, fontWeight: FontWeight.bold)),
-      ),
     );
   }
 
@@ -1894,14 +1685,6 @@ class _BoardScreenState extends State<BoardScreen>
     );
   }
 
-  TextStyle _labelStyle({bool dimmed = false}) => TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w600,
-        color: dimmed ? Colors.white38 : kGoldLight,
-        fontStyle: dimmed ? FontStyle.italic : FontStyle.normal,
-        letterSpacing: 0.4,
-      );
-
   Widget _buildGrid(
     Set<int> dragHighlights, {
     required double gridW,
@@ -1928,7 +1711,7 @@ class _BoardScreenState extends State<BoardScreen>
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.45),
+              color: Colors.black.withValues(alpha: 0.45),
               blurRadius: 16,
               offset: const Offset(0, 4),
             )
@@ -1975,7 +1758,7 @@ class _BoardScreenState extends State<BoardScreen>
                 borderWidth = 2.2;
                 text        = _l.slotLabel(type);
               } else {
-                bgColor     = kTableGreenMid.withOpacity(0.5);
+                bgColor     = kTableGreenMid.withValues(alpha: 0.5);
                 borderColor = kSlotDumpBorder;
                 borderWidth = 1.0;
               }
@@ -2002,7 +1785,7 @@ class _BoardScreenState extends State<BoardScreen>
                 );
                 shadows = [
                   BoxShadow(
-                    color: kRoyalGlowColor.withOpacity(0.55),
+                    color: kRoyalGlowColor.withValues(alpha: 0.55),
                     blurRadius: 10,
                     spreadRadius: 1,
                   ),
@@ -2058,8 +1841,8 @@ class _BoardScreenState extends State<BoardScreen>
                               fontSize: 13,
                               fontWeight: FontWeight.w800,
                               color: isDragTarget
-                                  ? kDragTargetBorder.withOpacity(0.95)
-                                  : kSlotFrameBorder.withOpacity(0.85),
+                                  ? kDragTargetBorder.withValues(alpha: 0.95)
+                                  : kSlotFrameBorder.withValues(alpha: 0.85),
                               height: 1.1,
                               letterSpacing: 0.5,
                             ),
@@ -2112,7 +1895,7 @@ class _BoardScreenState extends State<BoardScreen>
             // FIX 2: drag-and-drop also triggers sudden death on illegal placement
             return DragTarget<CardModel>(
               onWillAcceptWithDetails: (_) => true,
-              onAccept: (_) {
+              onAcceptWithDetails: (_) {
                 if (_showWelcomeModals) return;
                 _unlockAudio();
                 if (game.phase != Phase.fill || game.current == null) return;
@@ -2207,8 +1990,10 @@ class _BoardScreenState extends State<BoardScreen>
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         _pauseGameTimer();
+        final navigator = Navigator.of(context);
         await _stopAllAudioNow();
-        if (mounted) Navigator.of(context).pop(game);
+        if (!mounted) return;
+        navigator.pop(game);
       },
       child: Directionality(
         textDirection:
@@ -2258,10 +2043,10 @@ class _BoardScreenState extends State<BoardScreen>
                       padding: const EdgeInsets.symmetric(
                           horizontal: 5, vertical: 1),
                       decoration: BoxDecoration(
-                        color: _difficultyColor.withOpacity(0.18),
+                        color: _difficultyColor.withValues(alpha: 0.18),
                         borderRadius: BorderRadius.circular(4),
                         border: Border.all(
-                          color: _difficultyColor.withOpacity(0.55),
+                          color: _difficultyColor.withValues(alpha: 0.55),
                           width: 0.8,
                         ),
                       ),
@@ -2288,7 +2073,7 @@ class _BoardScreenState extends State<BoardScreen>
                       color: Colors.black45,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                          color: kGoldDark.withOpacity(0.5)),
+                          color: kGoldDark.withValues(alpha: 0.5)),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -2459,10 +2244,10 @@ class _BoardScreenState extends State<BoardScreen>
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                           side: BorderSide(
-                              color: kGoldDark.withOpacity(0.5)),
+                              color: kGoldDark.withValues(alpha: 0.5)),
                         ),
                         onSelected: (value) {
-                          if (value == 'rules')
+                          if (value == 'rules') {
                             showDialog(
                                 context: context,
                                 builder: (_) => RulesDialog(
@@ -2477,21 +2262,21 @@ class _BoardScreenState extends State<BoardScreen>
                                     setState(() => _showWelcomeModals = true);
                                   },
                                 ));
-                          else if (value == 'difficulty')
+                          } else if (value == 'difficulty') {
                             _showDifficultyPicker();
-                          else if (value == 'cosmetics')
+                          } else if (value == 'cosmetics') {
                             _showThemeGallery();
-                          else if (value == 'lang') {
+                          } else if (value == 'lang') {
                             final newLang = _lang == AppLang.he ? AppLang.en : AppLang.he;
                             setState(() => _lang = newLang);
                             L.saveLang(newLang);
-                          }
-                          else if (value == 'mute')
+                          } else if (value == 'mute') {
                             _toggleMute();
-                          else if (value == 'haptic')
+                          } else if (value == 'haptic') {
                             _toggleHaptic();
-                          else if (value == 'optional_clearing')
+                          } else if (value == 'optional_clearing') {
                             _toggleOptionalClearing();
+                          }
                         },
                         itemBuilder: (context) => [
                           PopupMenuItem(
@@ -2620,7 +2405,7 @@ class _BoardScreenState extends State<BoardScreen>
                     children: [
                       if (_moveMode)
                         Container(
-                          color: kGoldDark.withOpacity(0.25),
+                          color: kGoldDark.withValues(alpha: 0.25),
                           padding: const EdgeInsets.symmetric(
                               vertical: 4, horizontal: 12),
                           child: Row(
@@ -2651,7 +2436,7 @@ class _BoardScreenState extends State<BoardScreen>
                           !_isAnimatingClear &&
                           true)
                         Container(
-                          color: kBurgundy.withOpacity(0.85),
+                          color: kBurgundy.withValues(alpha: 0.85),
                           padding: const EdgeInsets.symmetric(
                               vertical: 4, horizontal: 12),
                           child: Row(
@@ -2689,7 +2474,7 @@ class _BoardScreenState extends State<BoardScreen>
                                           horizontal: 10,
                                           vertical: 3),
                                   decoration: BoxDecoration(
-                                    color: kGoldDark.withOpacity(0.3),
+                                    color: kGoldDark.withValues(alpha: 0.3),
                                     borderRadius:
                                         BorderRadius.circular(6),
                                     border: Border.all(
@@ -2733,20 +2518,13 @@ class _BoardScreenState extends State<BoardScreen>
                                 mainAxisAlignment:
                                     MainAxisAlignment.center,
                                 children: [
-                                  AnimatedOpacity(
-                                    duration: const Duration(
-                                        milliseconds: 450),
-                                    curve: Curves.easeInOut,
-                                    opacity: (game.phase ==
-                                                Phase.clear &&
-                                            false)
-                                        ? 0.35
-                                        : 1.0,
-                                    child: SizedBox(
-                                      height: deckRowH,
-                                      child: Center(
-                                          child: _deckRow()),
-                                    ),
+                                  // Deck-row dimming during the clear phase
+                                  // was intentionally disabled; render at
+                                  // full opacity.
+                                  SizedBox(
+                                    height: deckRowH,
+                                    child: Center(
+                                        child: _deckRow()),
                                   ),
                                   SizedBox(height: innerGap),
                                   Center(
@@ -2873,17 +2651,17 @@ class _BoardScreenState extends State<BoardScreen>
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                               colors: [
-                                Colors.black.withOpacity(0.30),
-                                Colors.black.withOpacity(0.22),
+                                Colors.black.withValues(alpha: 0.30),
+                                Colors.black.withValues(alpha: 0.22),
                               ],
                             ),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                                color: kGold.withOpacity(0.75),
+                                color: kGold.withValues(alpha: 0.75),
                                 width: 1.8),
                             boxShadow: [
                               BoxShadow(
-                                color: kGold.withOpacity(0.35),
+                                color: kGold.withValues(alpha: 0.35),
                                 blurRadius: 36,
                                 spreadRadius: 4,
                               ),
@@ -2924,7 +2702,7 @@ class _BoardScreenState extends State<BoardScreen>
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color:
-                                      Colors.white.withOpacity(0.90),
+                                      Colors.white.withValues(alpha: 0.90),
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
                                   letterSpacing: 0.4,
@@ -2994,8 +2772,8 @@ class _BoardScreenState extends State<BoardScreen>
         child: IgnorePointer(
           child: Container(
             color: iWon
-                ? kGold.withOpacity(0.88)
-                : Colors.redAccent.withOpacity(0.82),
+                ? kGold.withValues(alpha: 0.88)
+                : Colors.redAccent.withValues(alpha: 0.82),
             padding: const EdgeInsets.symmetric(vertical: 10),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -3023,7 +2801,7 @@ class _BoardScreenState extends State<BoardScreen>
       right: 0,
       child: IgnorePointer(
         child: Container(
-          color: Colors.black.withOpacity(0.65),
+          color: Colors.black.withValues(alpha: 0.65),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           child: Row(
             children: [
@@ -3057,7 +2835,7 @@ class _BoardScreenState extends State<BoardScreen>
               Container(
                 width: 1,
                 height: 32,
-                color: kGoldDark.withOpacity(0.6),
+                color: kGoldDark.withValues(alpha: 0.6),
                 margin: const EdgeInsets.symmetric(horizontal: 12),
               ),
               // Opponent score
@@ -3135,7 +2913,7 @@ class _BoardScreenState extends State<BoardScreen>
     ];
 
     return Container(
-      color: Colors.black.withOpacity(0.72),
+      color: Colors.black.withValues(alpha: 0.72),
       child: Center(
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 28),
@@ -3147,7 +2925,7 @@ class _BoardScreenState extends State<BoardScreen>
             border: Border.all(color: kGold, width: 2.5),
             boxShadow: [
               BoxShadow(
-                  color: kGold.withOpacity(0.35),
+                  color: kGold.withValues(alpha: 0.35),
                   blurRadius: 40,
                   spreadRadius: 4)
             ],
@@ -3176,7 +2954,7 @@ class _BoardScreenState extends State<BoardScreen>
                   color: Colors.black45,
                   borderRadius: BorderRadius.circular(12),
                   border:
-                      Border.all(color: kGoldDark.withOpacity(0.3)),
+                      Border.all(color: kGoldDark.withValues(alpha: 0.3)),
                 ),
                 child: Column(
                   children: [
@@ -3222,10 +3000,10 @@ class _BoardScreenState extends State<BoardScreen>
                 padding: const EdgeInsets.symmetric(
                     horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.06),
+                  color: Colors.white.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(20),
                   border:
-                      Border.all(color: kGoldDark.withOpacity(0.5)),
+                      Border.all(color: kGoldDark.withValues(alpha: 0.5)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -3395,19 +3173,19 @@ class _BoardScreenState extends State<BoardScreen>
     };
 
     return Container(
-      color: Colors.black.withOpacity(0.40),
+      color: Colors.black.withValues(alpha: 0.40),
       child: Center(
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 28),
           padding:
               const EdgeInsets.symmetric(vertical: 28, horizontal: 22),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.72),
+            color: Colors.black.withValues(alpha: 0.72),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: kBlockedBorder, width: 1.8),
             boxShadow: [
               BoxShadow(
-                color: kBlockedBorder.withOpacity(0.28),
+                color: kBlockedBorder.withValues(alpha: 0.28),
                 blurRadius: 28,
                 spreadRadius: 2,
               ),
@@ -3447,10 +3225,10 @@ class _BoardScreenState extends State<BoardScreen>
                 padding: const EdgeInsets.symmetric(
                     horizontal: 14, vertical: 7),
                 decoration: BoxDecoration(
-                  color: kBurgundy.withOpacity(0.5),
+                  color: kBurgundy.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                      color: kGoldDark.withOpacity(0.5), width: 1),
+                      color: kGoldDark.withValues(alpha: 0.5), width: 1),
                 ),
                 child: Text(
                   _l.lossCardsLeft(deckLeft),
@@ -3470,10 +3248,10 @@ class _BoardScreenState extends State<BoardScreen>
                 padding: const EdgeInsets.symmetric(
                     horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.06),
+                  color: Colors.white.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(20),
                   border:
-                      Border.all(color: kGoldDark.withOpacity(0.5)),
+                      Border.all(color: kGoldDark.withValues(alpha: 0.5)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -3636,7 +3414,7 @@ class _DifficultyPickerDialogState
           border: Border.all(color: kGold, width: 1.8),
           boxShadow: [
             BoxShadow(
-              color: kGold.withOpacity(0.15),
+              color: kGold.withValues(alpha: 0.15),
               blurRadius: 32,
               spreadRadius: 2,
             ),
@@ -3649,7 +3427,7 @@ class _DifficultyPickerDialogState
             Container(
               padding: const EdgeInsets.fromLTRB(20, 18, 16, 14),
               decoration: BoxDecoration(
-                color: kBurgundyLight.withOpacity(0.5),
+                color: kBurgundyLight.withValues(alpha: 0.5),
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(20),
                   topRight: Radius.circular(20),
@@ -3700,8 +3478,8 @@ class _DifficultyPickerDialogState
                           horizontal: 16, vertical: 14),
                       decoration: BoxDecoration(
                         color: isChosen
-                            ? d.accentDark.withOpacity(0.35)
-                            : Colors.black.withOpacity(0.25),
+                            ? d.accentDark.withValues(alpha: 0.35)
+                            : Colors.black.withValues(alpha: 0.25),
                         borderRadius:
                             BorderRadius.circular(14),
                         border: Border.all(
@@ -3714,7 +3492,7 @@ class _DifficultyPickerDialogState
                             ? [
                                 BoxShadow(
                                   color: d.accentLight
-                                      .withOpacity(0.22),
+                                      .withValues(alpha: 0.22),
                                   blurRadius: 12,
                                   spreadRadius: 1,
                                 ),
@@ -3750,7 +3528,7 @@ class _DifficultyPickerDialogState
                                   style: TextStyle(
                                     color: isChosen
                                         ? d.accentLight
-                                            .withOpacity(0.75)
+                                            .withValues(alpha: 0.75)
                                         : Colors.white38,
                                     fontSize: 12,
                                     height: 1.4,
@@ -3859,7 +3637,7 @@ class _CosmeticsShopDialogState extends State<_CosmeticsShopDialog>
           border: Border.all(color: kGold, width: 1.8),
           boxShadow: [
             BoxShadow(
-                color: kGold.withOpacity(0.15),
+                color: kGold.withValues(alpha: 0.15),
                 blurRadius: 32,
                 spreadRadius: 2),
           ],
@@ -3872,7 +3650,7 @@ class _CosmeticsShopDialogState extends State<_CosmeticsShopDialog>
               padding:
                   const EdgeInsets.fromLTRB(20, 18, 16, 0),
               decoration: BoxDecoration(
-                color: kBurgundyLight.withOpacity(0.5),
+                color: kBurgundyLight.withValues(alpha: 0.5),
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(20),
                   topRight: Radius.circular(20),
@@ -3906,7 +3684,7 @@ class _CosmeticsShopDialogState extends State<_CosmeticsShopDialog>
                               BorderRadius.circular(12),
                           border: Border.all(
                               color:
-                                  kGoldDark.withOpacity(0.5)),
+                                  kGoldDark.withValues(alpha: 0.5)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -4021,7 +3799,7 @@ class _CosmeticsShopDialogState extends State<_CosmeticsShopDialog>
               boxShadow: isEquipped
                   ? [
                       BoxShadow(
-                          color: kGold.withOpacity(0.3),
+                          color: kGold.withValues(alpha: 0.3),
                           blurRadius: 8)
                     ]
                   : null,
@@ -4052,7 +3830,7 @@ class _CosmeticsShopDialogState extends State<_CosmeticsShopDialog>
                   // Lock overlay
                   if (!isUnlocked)
                     Container(
-                      color: Colors.black.withOpacity(0.65),
+                      color: Colors.black.withValues(alpha: 0.65),
                       child: Column(
                         mainAxisAlignment:
                             MainAxisAlignment.center,
@@ -4094,7 +3872,7 @@ class _CosmeticsShopDialogState extends State<_CosmeticsShopDialog>
                     child: Container(
                       padding:
                           const EdgeInsets.symmetric(vertical: 4),
-                      color: Colors.black.withOpacity(0.55),
+                      color: Colors.black.withValues(alpha: 0.55),
                       child: Text(
                         item.name,
                         textAlign: TextAlign.center,
@@ -4131,10 +3909,10 @@ class DeckTag extends StatelessWidget {
       padding:
           const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: kBurgundy.withOpacity(0.90),
+        color: kBurgundy.withValues(alpha: 0.90),
         borderRadius: BorderRadius.circular(6),
         border: Border.all(
-            color: kGoldDark.withOpacity(0.8), width: 1.0),
+            color: kGoldDark.withValues(alpha: 0.8), width: 1.0),
       ),
       child: Text(
         text,

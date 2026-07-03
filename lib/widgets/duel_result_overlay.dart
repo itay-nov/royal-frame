@@ -46,7 +46,7 @@ class DuelResultOverlay extends StatelessWidget {
     final oppRoyals    = isHost ? session.guestRoyals : session.hostRoyals;
 
     return Container(
-      color: Colors.black.withOpacity(0.82),
+      color: Colors.black.withValues(alpha: 0.82),
       child: Center(
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 24),
@@ -57,7 +57,7 @@ class DuelResultOverlay extends StatelessWidget {
             border: Border.all(color: kGold, width: 2),
             boxShadow: [
               BoxShadow(
-                color: kGold.withOpacity(0.25),
+                color: kGold.withValues(alpha: 0.25),
                 blurRadius: 32,
                 spreadRadius: 2,
               ),
@@ -107,7 +107,7 @@ class DuelResultOverlay extends StatelessWidget {
                     Container(
                       width: 1,
                       margin: const EdgeInsets.symmetric(horizontal: 12),
-                      color: kGoldDark.withOpacity(0.4),
+                      color: kGoldDark.withValues(alpha: 0.4),
                     ),
                     // OPPONENT column
                     Expanded(
@@ -222,15 +222,15 @@ class _StatColumn extends StatelessWidget {
     final textAlign = alignRight ? TextAlign.right : TextAlign.left;
     final color = highlight ? kGold : kBlockedBorder;
     final bgColor = highlight
-        ? kGold.withOpacity(0.08)
-        : Colors.red.withOpacity(0.06);
+        ? kGold.withValues(alpha: 0.08)
+        : Colors.red.withValues(alpha: 0.06);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.35), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.35), width: 1),
       ),
       child: Column(
         crossAxisAlignment: align,
