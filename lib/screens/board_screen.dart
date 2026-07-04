@@ -31,7 +31,7 @@ import '../widgets/dialogs/cosmetics_shop_dialog.dart';
 import '../widgets/dialogs/difficulty_picker_dialog.dart';
 import '../widgets/board/flying_clear_card.dart';
 import '../widgets/board/game_over_overlay.dart';
-import '../widgets/royal_button.dart';
+import '../widgets/board/winner_overlay.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TUTORIAL HINT TYPES
@@ -2561,7 +2561,7 @@ class _BoardScreenState extends State<BoardScreen>
                   ),
 
                   if (game.phase == Phase.winner)
-                    _buildWinnerOverlay(),
+                    _winnerOverlayHost(),
 
                   if (game.phase == Phase.gameOver &&
                       _showGameOverOverlay)
@@ -2885,201 +2885,6 @@ class _BoardScreenState extends State<BoardScreen>
     );
   }
 
-  Widget _buildWinnerOverlay() {
-    if (!_statsUpdatedThisGame) {
-      _statsUpdatedThisGame = true;
-      DbService().updatePlayerStats(game.score, true);
-      DailyGoalService.addProgress(GoalType.scorePoints, game.score);
-    }
-
-    final int baseScore = game.score;
-    const int winBonus = 1000;
-    final int drawnWhenFilled =
-        game.cardsDrawnWhenFrameFilled ?? 52;
-    final int effBonus =
-        max(0, (52 - drawnWhenFilled) * 50);
-    final int seconds = (game.endTime ?? DateTime.now())
-        .difference(game.startTime)
-        .inSeconds;
-    final int speedBonus = max(0, 5000 - (seconds * 5));
-    final int rawTotal =
-        baseScore + winBonus + effBonus + speedBonus;
-
-    final double multiplier = switch (_difficulty) {
-      GameDifficulty.easy    => 0.25,
-      GameDifficulty.medium  => 0.5,
-      GameDifficulty.classic => 1.0,
-      GameDifficulty.expert  => 2.0,
-    };
-    final int totalScore = (rawTotal * multiplier).round();
-
-    final int xpGained = switch (_difficulty) {
-      GameDifficulty.easy    => 125,
-      GameDifficulty.medium  => 250,
-      GameDifficulty.classic => 500,
-      GameDifficulty.expert  => 1000,
-    };
-
-    const textShadow = [
-      Shadow(color: Colors.black, blurRadius: 8, offset: Offset(0, 2)),
-    ];
-
-    return Container(
-      color: Colors.black.withValues(alpha: 0.72),
-      child: Center(
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 28),
-          padding:
-              const EdgeInsets.symmetric(vertical: 28, horizontal: 22),
-          decoration: BoxDecoration(
-            color: kBurgundyLight,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: kGold, width: 2.5),
-            boxShadow: [
-              BoxShadow(
-                  color: kGold.withValues(alpha: 0.35),
-                  blurRadius: 40,
-                  spreadRadius: 4)
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('👑', style: TextStyle(fontSize: 56)),
-              const SizedBox(height: 12),
-              Text(
-                _l.winTitle,
-                style: const TextStyle(
-                  color: kGold,
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
-                  shadows: textShadow,
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Score breakdown
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.black45,
-                  borderRadius: BorderRadius.circular(12),
-                  border:
-                      Border.all(color: kGoldDark.withValues(alpha: 0.3)),
-                ),
-                child: Column(
-                  children: [
-                    _scoreRow(_l.winBaseScore, '+$baseScore'),
-                    _scoreRow(_l.effBonus, '+$effBonus'),
-                    _scoreRow(_l.speedBonus, '+$speedBonus'),
-                    _scoreRow(_l.winBonus, '+$winBonus',
-                        isGold: true),
-                    if (multiplier != 1.0)
-                      _scoreRow(
-                        'Difficulty ×${multiplier.toStringAsFixed(1)}',
-                        '',
-                      ),
-                    const Divider(color: kGoldDark, height: 24),
-                    Row(
-                      mainAxisAlignment:
-                          MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          _l.totalScore,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          '$totalScore',
-                          style: const TextStyle(
-                              color: kGold,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // XP badge
-              Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(20),
-                  border:
-                      Border.all(color: kGoldDark.withValues(alpha: 0.5)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.star, color: kGold, size: 14),
-                    const SizedBox(width: 6),
-                    Text(
-                      '+$xpGained XP',
-                      style: const TextStyle(
-                        color: kGold,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              RoyalButton(
-                label: _l.winBtn,
-                icon: Icons.refresh,
-                variant: RoyalButtonVariant.emphasized,
-                expand: true,
-                minHeight: 52,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 16),
-                onPressed: _restartCurrentGame,
-              ),
-              const SizedBox(height: 10),
-
-              RoyalButton(
-                label: _lang == AppLang.he ? 'בחר רמה' : 'Change Difficulty',
-                icon: Icons.tune,
-                variant: RoyalButtonVariant.secondary,
-                expand: true,
-                minHeight: 44,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 10),
-                onPressed: _openDifficultyPicker,
-              ),
-              const SizedBox(height: 8),
-              RoyalButton(
-                label: _l.shareVictoryBtn,
-                icon: Icons.share,
-                variant: RoyalButtonVariant.secondary,
-                expand: true,
-                minHeight: 44,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 10),
-                onPressed: () => _shareVictory(totalScore),
-              ),
-              const SizedBox(height: 8),
-              RoyalButton(
-                label: _lang == AppLang.he ? 'תפריט ראשי' : 'Main Menu',
-                icon: Icons.home_outlined,
-                variant: RoyalButtonVariant.tertiary,
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildCompactIcon(
       IconData icon, Color color, VoidCallback? onTap) {
@@ -3129,26 +2934,62 @@ class _BoardScreenState extends State<BoardScreen>
     );
   }
 
-  Widget _scoreRow(String title, String value,
-      {bool isGold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title,
-              style: const TextStyle(
-                  color: Colors.white70, fontSize: 14)),
-          Text(
-            value,
-            style: TextStyle(
-              color: isGold ? kGold : kGoldLight,
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
+
+  /// Hosts [WinnerOverlay]. Keeps the one-shot stats side effect with the
+  /// screen state and computes the score breakdown at end-state time; the
+  /// overlay itself is pure visual.
+  // TODO(defect-report): this write fires during build (guarded by
+  // _statsUpdatedThisGame). Pre-existing behavior, intentionally preserved.
+  Widget _winnerOverlayHost() {
+    if (!_statsUpdatedThisGame) {
+      _statsUpdatedThisGame = true;
+      DbService().updatePlayerStats(game.score, true);
+      DailyGoalService.addProgress(GoalType.scorePoints, game.score);
+    }
+
+    final int baseScore = game.score;
+    const int winBonus = 1000;
+    final int drawnWhenFilled =
+        game.cardsDrawnWhenFrameFilled ?? 52;
+    final int effBonus =
+        max(0, (52 - drawnWhenFilled) * 50);
+    final int seconds = (game.endTime ?? DateTime.now())
+        .difference(game.startTime)
+        .inSeconds;
+    final int speedBonus = max(0, 5000 - (seconds * 5));
+    final int rawTotal =
+        baseScore + winBonus + effBonus + speedBonus;
+
+    final double multiplier = switch (_difficulty) {
+      GameDifficulty.easy    => 0.25,
+      GameDifficulty.medium  => 0.5,
+      GameDifficulty.classic => 1.0,
+      GameDifficulty.expert  => 2.0,
+    };
+    final int totalScore = (rawTotal * multiplier).round();
+
+    final int xpGained = switch (_difficulty) {
+      GameDifficulty.easy    => 125,
+      GameDifficulty.medium  => 250,
+      GameDifficulty.classic => 500,
+      GameDifficulty.expert  => 1000,
+    };
+
+    return WinnerOverlay(
+      stats: (
+        baseScore: baseScore,
+        winBonus: winBonus,
+        effBonus: effBonus,
+        speedBonus: speedBonus,
+        multiplier: multiplier,
+        totalScore: totalScore,
+        xpGained: xpGained,
       ),
+      lang: _lang,
+      onPlayAgain: _restartCurrentGame,
+      onChangeDifficulty: _openDifficultyPicker,
+      onShare: () => _shareVictory(totalScore),
+      onMainMenu: () => Navigator.of(context).pop(),
     );
   }
 
