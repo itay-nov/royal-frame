@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/haptic_service.dart';
 import '../theme_constants.dart';
 import '../utils/localization.dart';
 
@@ -12,7 +13,7 @@ class OverlayHolePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.saveLayer(Offset.zero & size, Paint());
-    canvas.drawColor(Colors.black.withOpacity(0.82), BlendMode.srcOver);
+    canvas.drawColor(Colors.black.withValues(alpha: 0.82), BlendMode.srcOver);
     final clear = Paint()..blendMode = BlendMode.clear;
     for (final r in holes) {
       if (r.width > 0 && r.height > 0) {
@@ -190,7 +191,7 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                   border: Border.all(color: kGold, width: 2),
                   boxShadow: [
                     BoxShadow(
-                      color: kGold.withOpacity(0.28),
+                      color: kGold.withValues(alpha: 0.28),
                       blurRadius: 28,
                       spreadRadius: 1,
                     ),
@@ -205,7 +206,9 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                           ? 'שלב ${_step + 1} / ${_steps.length}'
                           : 'Step ${_step + 1} / ${_steps.length}',
                       style: const TextStyle(
-                        color: kGold,
+                        // kGoldLight for WCAG small-text contrast on the
+                        // burgundy modal (kGold measures ~2.9:1 here).
+                        color: kGoldLight,
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 1.4,
@@ -292,9 +295,14 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                            onPressed: _isLast
-                                ? () => widget.onFinish(skipped: false)
-                                : () => _goTo(_step + 1),
+                            onPressed: () {
+                              HapticService.light();
+                              if (_isLast) {
+                                widget.onFinish(skipped: false);
+                              } else {
+                                _goTo(_step + 1);
+                              }
+                            },
                             child: Text(
                               _isLast
                                   ? (isHe ? "יאללה נשחק! 👑" : "Let's Play! 👑")

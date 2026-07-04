@@ -39,6 +39,8 @@ class L {
   String get tooltipNewGame => isHe ? 'משחק חדש' : 'New Game';
   String get tooltipRules => isHe ? 'חוקים' : 'Rules';
   String get tooltipMore => isHe ? 'עוד' : 'More';
+  String get tooltipHome => isHe ? 'תפריט ראשי' : 'Main menu';
+  String get tooltipDailyGoal => isHe ? 'יעד יומי' : 'Daily goal';
 
   String get menuDebugShow => isHe ? 'הצג כלי פיתוח' : 'Show debug tools';
   String get menuDebugHide => isHe ? 'הסתר כלי פיתוח' : 'Hide debug tools';
@@ -84,6 +86,45 @@ class L {
   String get lossBtn => isHe ? 'נסה שוב' : 'Try Again';
   String lossCardsLeft(int n) =>
       isHe ? 'קלפים שנשארו בחפיסה: $n' : 'Cards remaining in deck: $n';
+  String get lossSuddenDeath =>
+      isHe ? 'מהלך אחד שגוי — וזהו.' : 'One wrong move — and that\'s it.';
+  String difficultyMultiplier(String m) =>
+      isHe ? 'רמת קושי ×$m' : 'Difficulty ×$m';
+
+  // Duel HUD & result screen
+  String get duelYou => isHe ? 'אתה' : 'YOU';
+  String get duelOpponentFallback => isHe ? 'יריב' : 'Opponent';
+  String get duelGuestFallback => isHe ? 'אורח' : 'Guest';
+  String get duelYouWinBanner =>
+      isHe ? '  ניצחת בדו-קרב!' : '  You Win the Duel!';
+  String get duelOpponentWinsBanner =>
+      isHe ? '  היריב ניצח בדו-קרב' : '  Opponent Wins the Duel';
+  String get duelOpponentReady =>
+      isHe ? 'היריב מוכן!' : 'Opponent is ready!';
+  String get duelWaitingOpponent =>
+      isHe ? 'ממתין ליריב...' : 'Waiting for opponent...';
+  String get btnPlayAgain => isHe ? 'שחק שוב' : 'Play Again';
+  String get duelOpponentCaps => isHe ? 'יריב' : 'OPPONENT';
+  String get duelResultWinTitle =>
+      isHe ? '👑 ניצחת בדו-קרב!' : '👑 You Win the Duel!';
+  String get duelResultLossTitle =>
+      isHe ? '💀 היריב ניצח' : '💀 Opponent Wins';
+  String get duelSyncFailed => isHe
+      ? 'בעיית חיבור — ייתכן שתוצאת הדו-קרב לא נשמרה.'
+      : 'Connection issue — your duel result may not be recorded.';
+
+  // Cosmetics shop
+  String get cosmeticsTitle => isHe ? 'גלריית ערכות' : 'Theme Gallery';
+  String get cosmeticsCardBacks => isHe ? 'גבי קלפים' : 'Card Backs';
+  String get cosmeticsBoardColors => isHe ? 'צבעי לוח' : 'Board Colors';
+
+  // Welcome screen
+  String get btnPlayAsGuest => isHe ? 'שחק כאורח' : 'Play as Guest';
+  String get btnContinueGoogle =>
+      isHe ? 'המשך עם Google' : 'Continue with Google';
+  String get btnContinuePhone =>
+      isHe ? 'המשך עם טלפון' : 'Continue with Phone';
+  String get errEnterName => isHe ? 'נא להזין שם' : 'Please enter a name';
 
   String get rulesTitle => isHe ? 'חוקים' : 'Rules';
   String get rulesBody => isHe

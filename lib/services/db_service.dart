@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 import '../models/player_model.dart';
 import 'auth_service.dart';
 
@@ -81,7 +80,33 @@ class DbService {
     }
   }
 
+  /// Creates players/{uid} with default stats if it doesn't exist yet.
+  /// Merge-safe: never overwrites an existing document's stats.
+  Future<void> ensurePlayerDoc(String uid, String displayName) async {
+    final doc = await _db.collection('players').doc(uid).get();
+    if (doc.exists) return;
+    await _db.collection('players').doc(uid).set(
+          PlayerModel(
+            uid: uid,
+            displayName: displayName,
+            lastUpdated: DateTime.now(),
+          ).toMap(),
+          SetOptions(merge: true),
+        );
+  }
+
   // ── Read helpers ───────────────────────────────────────────────────────────
+
+  /// Server-driven existence check for players/{uid}.
+  /// Intentionally does NOT catch errors — callers must distinguish
+  /// "document is missing" from "network/permission failure".
+  Future<bool> playerDocExists(String uid) async {
+    final doc = await _db
+        .collection('players')
+        .doc(uid)
+        .get(const GetOptions(source: Source.server));
+    return doc.exists;
+  }
 
   /// Returns the authenticated user's Firestore player document, or null.
   Future<PlayerModel?> getCurrentUserData() async {

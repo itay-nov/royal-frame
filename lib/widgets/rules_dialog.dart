@@ -11,24 +11,24 @@ class _RulePage {
 
 const List<_RulePage> _hePages = [
   _RulePage(
-    Color(0xFF4A1A2A),
+    kRulesPageBurgundy,
     Icons.star,
     'קלפי מלוכה (מלך, מלכה, נסיך) חובה למקם במסגרת החיצונית במקומות '
         'הייעודיים. אפשר לגרור קלף או פשוט ללחוץ על המשבצת הייעודית.',
   ),
   _RulePage(
-    Color(0xFF1A2A4A),
+    kRulesPageNavy,
     Icons.grid_view,
     'קלפי מספרים אפשר לשים בכל מקום פנוי — במרכז או במסגרת החיצונית.',
   ),
   _RulePage(
-    Color(0xFF1A3A2A),
+    kTableGreen,
     Icons.cleaning_services,
     'כשהלוח מתמלא, יש למצוא ולפנות זוגות של קלפי מספרים שסכומם 11. '
         'חובה לפנות את כל הזוגות האפשריים לפני שחוזרים להניח שוב!',
   ),
   _RulePage(
-    Color(0xFF3A2A1A),
+    kRulesPageBrown,
     Icons.emoji_events,
     'הניצחון מוכרז רק כשהמסגרת מלאה בקלפי מלוכה. אם יש עוד זוגות לפנות — '
         'מפנים, אך המטרה היא 12 קלפי מלוכה (או 8 ברמה הקלה).',
@@ -37,24 +37,24 @@ const List<_RulePage> _hePages = [
 
 const List<_RulePage> _enPages = [
   _RulePage(
-    Color(0xFF4A1A2A),
+    kRulesPageBurgundy,
     Icons.star,
     'Royal cards (King, Queen, Jack) must be placed in their matching slots '
         'on the outer frame. You can drag a card or tap the target slot directly.',
   ),
   _RulePage(
-    Color(0xFF1A2A4A),
+    kRulesPageNavy,
     Icons.grid_view,
     'Number cards can be placed in any empty slot — center or outer frame.',
   ),
   _RulePage(
-    Color(0xFF1A3A2A),
+    kTableGreen,
     Icons.cleaning_services,
     'When the board fills up, find and clear pairs of number cards that sum '
         'to 11. You must clear all available pairs before placing new cards!',
   ),
   _RulePage(
-    Color(0xFF3A2A1A),
+    kRulesPageBrown,
     Icons.emoji_events,
     'Victory is declared only when the outer frame is full of royals. '
         'Clear pairs along the way, but the goal is 12 royal cards (or 8 on Easy mode).',
@@ -117,7 +117,8 @@ class _RulesDialogState extends State<RulesDialog> {
                 child: Text(
                   '${_page + 1} / ${pages.length}',
                   style: const TextStyle(
-                    color: kGold,
+                    // kGoldLight for WCAG small-text contrast on burgundy.
+                    color: kGoldLight,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1,
@@ -175,6 +176,8 @@ class _RulesDialogState extends State<RulesDialog> {
                       style: OutlinedButton.styleFrom(
                         foregroundColor: kGoldLight,
                         side: const BorderSide(color: kGold),
+                        minimumSize:
+                            const Size(kMinTouchTarget, kMinTouchTarget),
                       ),
                       onPressed: isHe
                           ? (_page < pages.length - 1
@@ -206,6 +209,8 @@ class _RulesDialogState extends State<RulesDialog> {
                       style: OutlinedButton.styleFrom(
                         foregroundColor: kGoldLight,
                         side: const BorderSide(color: kGold),
+                        minimumSize:
+                            const Size(kMinTouchTarget, kMinTouchTarget),
                       ),
                       onPressed: isHe
                           ? (_page > 0 ? () => _goTo(_page - 1) : null)

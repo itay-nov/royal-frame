@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme_constants.dart';
+import '../utils/app_feedback.dart';
+import '../utils/app_route.dart';
 import '../utils/localization.dart';
 import '../services/auth_service.dart';
 import '../services/db_service.dart';
@@ -61,28 +63,18 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   void _goToMainMenu() {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const MainMenuScreen()),
+      appRoute(const MainMenuScreen()),
     );
   }
 
   void _showError(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white)),
-        backgroundColor: Colors.red.shade800,
-      ),
-    );
+    showAppSnack(context, message, isError: true);
   }
 
   void _showInfo(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white)),
-        backgroundColor: kBurgundyLight,
-      ),
-    );
+    showAppSnack(context, message);
   }
 
   // ─── Guest login ──────────────────────────────────────────────────────────
@@ -90,7 +82,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   void _startGame() async {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
-      _showError('Please enter a name');
+      _showError(_l.errEnterName);
       return;
     }
 
@@ -98,7 +90,15 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('playerName', name);
-    await _authService.signInAnonymously(name);
+    final credential = await _authService.signInAnonymously(name);
+
+    // Create the player document immediately so a guest who hasn't finished
+    // a game yet still has a valid backend record. This keeps the startup
+    // session validation from treating them as stale on the next launch.
+    final uid = credential?.user?.uid;
+    if (uid != null) {
+      await DbService().ensurePlayerDoc(uid, name);
+    }
 
     setState(() => _isLoading = false);
     _goToMainMenu();
@@ -120,30 +120,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       } else {
         setState(() => _isLoading = false);
         _showInfo('Google Login cancelled by user.');
-      }
-    } catch (e) {
-      setState(() => _isLoading = false);
-      _showError('DEBUG ERROR: $e');
-    }
-  }
-
-  // ─── Apple login (hidden, preserved for future use) ───────────────────────
-
-  void _signInWithApple() async {
-    setState(() => _isLoading = true);
-    try {
-      final userCred = await _authService.signInWithApple();
-      if (userCred != null) {
-        final name =
-            userCred.user?.displayName ??
-            userCred.user?.email?.split('@').first ??
-            'Player';
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('playerName', name);
-        _goToMainMenu();
-      } else {
-        setState(() => _isLoading = false);
-        _showInfo('Apple Login cancelled or failed.');
       }
     } catch (e) {
       setState(() => _isLoading = false);
@@ -299,7 +275,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     final ctrl = TextEditingController();
     final result = await showDialog<String>(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.7),
+      barrierColor: Colors.black.withValues(alpha: 0.7),
       builder: (ctx) => _RoyalDialog(
         title: 'Phone Number',
         subtitle: 'Enter in international format',
@@ -323,7 +299,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     final result = await showDialog<String>(
       context: context,
       barrierDismissible: false,
-      barrierColor: Colors.black.withOpacity(0.7),
+      barrierColor: Colors.black.withValues(alpha: 0.7),
       builder: (ctx) => _RoyalDialog(
         title: 'Verification Code',
         subtitle: 'Enter the 6-digit code sent to your phone',
@@ -350,7 +326,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     final result = await showDialog<String>(
       context: context,
       barrierDismissible: false,
-      barrierColor: Colors.black.withOpacity(0.7),
+      barrierColor: Colors.black.withValues(alpha: 0.7),
       builder: (ctx) => _RoyalDialog(
         title: 'Choose Your Name',
         subtitle: 'This will be your name on the leaderboard',
@@ -460,7 +436,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                       decoration: InputDecoration(
                         hintText: _l.welcomeHint,
                         hintStyle: TextStyle(
-                          color: kGoldDark.withOpacity(0.55),
+                          color: kGoldDark.withValues(alpha: 0.55),
                           fontSize: 15,
                         ),
                         enabledBorder: const UnderlineInputBorder(
@@ -500,7 +476,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: kGold.withOpacity(0.04),
+        color: kGold.withValues(alpha: 0.04),
       ),
     );
   }
@@ -511,7 +487,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     final targetLabel = _lang == AppLang.he ? 'English' : 'עברית';
     return OutlinedButton.icon(
       style: OutlinedButton.styleFrom(
-        backgroundColor: Colors.black.withOpacity(0.35),
+        backgroundColor: Colors.black.withValues(alpha: 0.35),
         foregroundColor: kGold,
         side: const BorderSide(color: kGold, width: 1.5),
         shape: RoundedRectangleBorder(
@@ -538,14 +514,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   Widget _buildButtonGroup() {
     return Column(
       children: [
-        _buildPrimaryButton(label: 'Play as Guest', onPressed: _startGame),
+        _buildPrimaryButton(label: _l.btnPlayAsGuest, onPressed: _startGame),
 
         const SizedBox(height: 28),
         _buildOrDivider(),
         const SizedBox(height: 24),
 
         _buildSocialLoginButton(
-          label: 'Continue with Google',
+          label: _l.btnContinueGoogle,
           icon: _buildGoogleIcon(),
           onPressed: _signInWithGoogle,
         ),
@@ -553,7 +529,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         const SizedBox(height: 14),
 
         _buildSocialLoginButton(
-          label: 'Continue with Phone',
+          label: _l.btnContinuePhone,
           icon: const Icon(Icons.phone, size: _kIconSize, color: Colors.white),
           onPressed: _signInWithPhone,
         ),
@@ -603,7 +579,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       child: OutlinedButton.icon(
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          backgroundColor: Colors.black.withOpacity(0.30),
+          backgroundColor: Colors.black.withValues(alpha: 0.30),
           foregroundColor: Colors.white,
           side: const BorderSide(color: kGoldDark, width: 1.2),
           shape: RoundedRectangleBorder(
@@ -635,14 +611,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       child: Row(
         children: [
           Expanded(
-            child: Divider(color: kGoldDark.withOpacity(0.45), thickness: 1),
+            child: Divider(color: kGoldDark.withValues(alpha: 0.45), thickness: 1),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(
               'OR',
               style: TextStyle(
-                color: kGoldDark.withOpacity(0.70),
+                color: kGoldDark.withValues(alpha: 0.70),
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1.5,
@@ -650,7 +626,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             ),
           ),
           Expanded(
-            child: Divider(color: kGoldDark.withOpacity(0.45), thickness: 1),
+            child: Divider(color: kGoldDark.withValues(alpha: 0.45), thickness: 1),
           ),
         ],
       ),
@@ -710,7 +686,7 @@ class _RoyalDialog extends StatelessWidget {
           border: Border.all(color: kGoldDark, width: 1.2),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.6),
+              color: Colors.black.withValues(alpha: 0.6),
               blurRadius: 24,
               offset: const Offset(0, 8),
             ),
@@ -733,7 +709,7 @@ class _RoyalDialog extends StatelessWidget {
               subtitle,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: kGoldDark.withOpacity(0.75),
+                color: kGoldDark.withValues(alpha: 0.75),
                 fontSize: 13,
               ),
             ),
@@ -753,7 +729,7 @@ class _RoyalDialog extends StatelessWidget {
               decoration: InputDecoration(
                 hintText: hintText,
                 hintStyle: TextStyle(
-                  color: kGoldDark.withOpacity(0.45),
+                  color: kGoldDark.withValues(alpha: 0.45),
                   fontSize: 15,
                   letterSpacing: 1,
                 ),
@@ -776,7 +752,7 @@ class _RoyalDialog extends StatelessWidget {
                     child: OutlinedButton(
                       style: OutlinedButton.styleFrom(
                         foregroundColor: kGoldDark,
-                        side: BorderSide(color: kGoldDark.withOpacity(0.5)),
+                        side: BorderSide(color: kGoldDark.withValues(alpha: 0.5)),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
