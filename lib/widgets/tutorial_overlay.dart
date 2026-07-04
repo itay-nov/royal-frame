@@ -206,7 +206,9 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                           ? 'שלב ${_step + 1} / ${_steps.length}'
                           : 'Step ${_step + 1} / ${_steps.length}',
                       style: const TextStyle(
-                        color: kGold,
+                        // kGoldLight for WCAG small-text contrast on the
+                        // burgundy modal (kGold measures ~2.9:1 here).
+                        color: kGoldLight,
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 1.4,

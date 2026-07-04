@@ -117,7 +117,8 @@ class _RulesDialogState extends State<RulesDialog> {
                 child: Text(
                   '${_page + 1} / ${pages.length}',
                   style: const TextStyle(
-                    color: kGold,
+                    // kGoldLight for WCAG small-text contrast on burgundy.
+                    color: kGoldLight,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1,

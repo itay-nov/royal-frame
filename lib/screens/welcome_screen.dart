@@ -82,7 +82,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   void _startGame() async {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
-      _showError('Please enter a name');
+      _showError(_l.errEnterName);
       return;
     }
 
@@ -514,14 +514,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   Widget _buildButtonGroup() {
     return Column(
       children: [
-        _buildPrimaryButton(label: 'Play as Guest', onPressed: _startGame),
+        _buildPrimaryButton(label: _l.btnPlayAsGuest, onPressed: _startGame),
 
         const SizedBox(height: 28),
         _buildOrDivider(),
         const SizedBox(height: 24),
 
         _buildSocialLoginButton(
-          label: 'Continue with Google',
+          label: _l.btnContinueGoogle,
           icon: _buildGoogleIcon(),
           onPressed: _signInWithGoogle,
         ),
@@ -529,7 +529,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         const SizedBox(height: 14),
 
         _buildSocialLoginButton(
-          label: 'Continue with Phone',
+          label: _l.btnContinuePhone,
           icon: const Icon(Icons.phone, size: _kIconSize, color: Colors.white),
           onPressed: _signInWithPhone,
         ),

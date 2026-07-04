@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/duel_service.dart';
 import '../theme_constants.dart';
+import '../utils/localization.dart';
 
 class DuelResultOverlay extends StatelessWidget {
   final DuelSession session;
@@ -9,6 +10,7 @@ class DuelResultOverlay extends StatelessWidget {
   final int myRoyals;
   final bool myRematchReady;
   final VoidCallback onPlayAgain;
+  final AppLang lang;
 
   const DuelResultOverlay({
     super.key,
@@ -18,6 +20,7 @@ class DuelResultOverlay extends StatelessWidget {
     required this.myRoyals,
     required this.myRematchReady,
     required this.onPlayAgain,
+    required this.lang,
   });
 
   String _formatTime(int? secs) {
@@ -29,18 +32,19 @@ class DuelResultOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = L(lang);
     final isHost       = session.hostUid == myUid;
     final iWon         = session.winnerId == myUid;
     final opponentReady = isHost
         ? (session.rematchReady[session.guestUid ?? ''] == true)
         : (session.rematchReady[session.hostUid] == true);
 
-    final myName       = isHost ? session.hostName : (session.guestName ?? 'Guest');
+    final myName       = isHost ? session.hostName : (session.guestName ?? l.duelGuestFallback);
     final myScore      = isHost ? session.hostScore : session.guestScore;
     final myTime       = myElapsedSeconds;
     final myRoyalCount = myRoyals;
 
-    final oppName      = isHost ? (session.guestName ?? 'Opponent') : session.hostName;
+    final oppName      = isHost ? (session.guestName ?? l.duelOpponentFallback) : session.hostName;
     final oppScore     = isHost ? session.guestScore : session.hostScore;
     final oppTime      = isHost ? session.guestTime  : session.hostTime;
     final oppRoyals    = isHost ? session.guestRoyals : session.hostRoyals;
@@ -68,7 +72,7 @@ class DuelResultOverlay extends StatelessWidget {
             children: [
               // Title
               Text(
-                iWon ? '👑 You Win the Duel!' : '💀 Opponent Wins',
+                iWon ? l.duelResultWinTitle : l.duelResultLossTitle,
                 style: TextStyle(
                   color: iWon ? kGold : kBlockedBorder,
                   fontSize: 20,
@@ -95,7 +99,7 @@ class DuelResultOverlay extends StatelessWidget {
                     // MY column
                     Expanded(
                       child: _StatColumn(
-                        label: 'YOU',
+                        label: l.duelYou,
                         name: myName,
                         score: myScore,
                         time: _formatTime(myTime),
@@ -112,7 +116,7 @@ class DuelResultOverlay extends StatelessWidget {
                     // OPPONENT column
                     Expanded(
                       child: _StatColumn(
-                        label: 'OPPONENT',
+                        label: l.duelOpponentCaps,
                         name: oppName,
                         score: oppScore,
                         time: _formatTime(oppTime),
@@ -132,7 +136,7 @@ class DuelResultOverlay extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Text(
-                    'Opponent is ready!',
+                    l.duelOpponentReady,
                     style: TextStyle(
                       color: kGoldLight,
                       fontSize: 13,
@@ -143,10 +147,10 @@ class DuelResultOverlay extends StatelessWidget {
 
               // Play Again / Waiting
               if (myRematchReady)
-                const Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    SizedBox(
+                    const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
@@ -154,10 +158,10 @@ class DuelResultOverlay extends StatelessWidget {
                         strokeWidth: 2,
                       ),
                     ),
-                    SizedBox(width: 10),
+                    const SizedBox(width: 10),
                     Text(
-                      'Waiting for opponent...',
-                      style: TextStyle(
+                      l.duelWaitingOpponent,
+                      style: const TextStyle(
                         color: kGoldDark,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -179,9 +183,9 @@ class DuelResultOverlay extends StatelessWidget {
                     ),
                     onPressed: onPlayAgain,
                     icon: const Icon(Icons.refresh, size: 18),
-                    label: const Text(
-                      'Play Again',
-                      style: TextStyle(
+                    label: Text(
+                      l.btnPlayAgain,
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.5,

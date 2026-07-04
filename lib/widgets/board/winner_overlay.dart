@@ -119,7 +119,8 @@ class WinnerOverlay extends StatelessWidget {
                         isGold: true),
                     if (stats.multiplier != 1.0)
                       _scoreRow(
-                        'Difficulty ×${stats.multiplier.toStringAsFixed(1)}',
+                        l.difficultyMultiplier(
+                            stats.multiplier.toStringAsFixed(1)),
                         '',
                       ),
                     const Divider(color: kGoldDark, height: 24),
@@ -167,7 +168,9 @@ class WinnerOverlay extends StatelessWidget {
                     Text(
                       '+${stats.xpGained} XP',
                       style: const TextStyle(
-                        color: kGold,
+                        // kGoldLight for WCAG small-text contrast on the
+                        // burgundy overlay card.
+                        color: kGoldLight,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),

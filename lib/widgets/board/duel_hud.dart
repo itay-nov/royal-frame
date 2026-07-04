@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/duel_service.dart';
 import '../../theme_constants.dart';
+import '../../utils/localization.dart';
 
 /// Duel-mode overlay chrome: the live score strip at the bottom while the
 /// duel runs, or the win/lose banner at the top once it's finished.
@@ -13,6 +14,7 @@ class DuelHud extends StatelessWidget {
   final String myUid;
   final int myScore;
   final int opponentScore;
+  final AppLang lang;
 
   const DuelHud({
     super.key,
@@ -20,13 +22,15 @@ class DuelHud extends StatelessWidget {
     required this.myUid,
     required this.myScore,
     required this.opponentScore,
+    required this.lang,
   });
 
   @override
   Widget build(BuildContext context) {
+    final l = L(lang);
     final isHost = session.hostUid == myUid;
     final opponentName = isHost
-        ? (session.guestName ?? 'Opponent')
+        ? (session.guestName ?? l.duelOpponentFallback)
         : session.hostName;
 
     // Result banner when duel is finished
@@ -46,7 +50,7 @@ class DuelHud extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  iWon ? '  You Win the Duel!' : '  Opponent Wins the Duel',
+                  iWon ? l.duelYouWinBanner : l.duelOpponentWinsBanner,
                   style: TextStyle(
                     color: iWon ? Colors.black : Colors.white,
                     fontSize: 16,
@@ -78,9 +82,9 @@ class DuelHud extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'YOU',
-                      style: TextStyle(
+                    Text(
+                      l.duelYou,
+                      style: const TextStyle(
                         color: kGoldLight,
                         fontSize: 9,
                         fontWeight: FontWeight.w900,

@@ -365,14 +365,7 @@ class _BoardScreenState extends State<BoardScreen>
     if (ok) {
       _duelFinishedReported = true;
     } else {
-      // TODO(l10n): move into L class (Phase 7).
-      showAppSnack(
-        context,
-        _lang == AppLang.he
-            ? 'בעיית חיבור — ייתכן שתוצאת הדו-קרב לא נשמרה.'
-            : 'Connection issue — your duel result may not be recorded.',
-        isError: true,
-      );
+      showAppSnack(context, L(_lang).duelSyncFailed, isError: true);
     }
   }
 
@@ -1361,6 +1354,7 @@ class _BoardScreenState extends State<BoardScreen>
     showDialog(
       context: context,
       builder: (_) => CosmeticsShopDialog(
+        lang: _lang,
         onChanged: () {
           if (mounted) setState(() {});
         },
@@ -2155,7 +2149,7 @@ class _BoardScreenState extends State<BoardScreen>
                   child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildCompactIcon(Icons.home, kGold, () {
+                    _buildCompactIcon(Icons.home, kGold, tooltip: _l.tooltipHome, () {
                       if (game.phase == Phase.winner ||
                           game.phase == Phase.gameOver) {
                         Navigator.pop(context, game);
@@ -2250,15 +2244,17 @@ class _BoardScreenState extends State<BoardScreen>
                       Icons.undo,
                       _undo.isNotEmpty ? kGold : kGoldDark,
                       _undo.isNotEmpty ? _undoAction : null,
+                      tooltip: _l.tooltipUndo,
                     ),
                     const SizedBox(width: 2),
                     _buildCompactIcon(
-                        Icons.refresh, kGold, _openDifficultyPicker),
+                        Icons.refresh, kGold, _openDifficultyPicker,
+                        tooltip: _l.tooltipNewGame),
                     const SizedBox(width: 2),
 
                     DailyGoalService.current?.isCompleted == true
                         ? _buildDailyGoalCompletedBadge()
-                        : _buildCompactIcon(Icons.flag, kGold, _showDailyGoal),
+                        : _buildCompactIcon(Icons.flag, kGold, _showDailyGoal, tooltip: _l.tooltipDailyGoal),
                     const SizedBox(width: 2),
 
                     SizedBox(
@@ -2598,6 +2594,7 @@ class _BoardScreenState extends State<BoardScreen>
                           myRoyals: _myFinalRoyals,
                           myRematchReady: _myRematchReady,
                           onPlayAgain: _onPlayAgainTapped,
+                          lang: _lang,
                         ),
                       ),
                     ),
@@ -2794,12 +2791,14 @@ class _BoardScreenState extends State<BoardScreen>
       myUid: FirebaseAuth.instance.currentUser?.uid ?? '',
       myScore: game.score,
       opponentScore: _opponentScore,
+      lang: _lang,
     );
   }
 
   Widget _buildCompactIcon(
-      IconData icon, Color color, VoidCallback? onTap) {
-    return InkWell(
+      IconData icon, Color color, VoidCallback? onTap,
+      {String? tooltip}) {
+    final Widget button = InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Padding(
@@ -2808,6 +2807,10 @@ class _BoardScreenState extends State<BoardScreen>
         child: Icon(icon, size: 26, color: color),
       ),
     );
+    if (tooltip == null) return button;
+    // Tooltip provides both the long-press/hover hint and the
+    // screen-reader semantics label for these icon-only controls.
+    return Tooltip(message: tooltip, child: button);
   }
 
   /// Fixed-size golden badge shown in the AppBar when the daily goal is done.

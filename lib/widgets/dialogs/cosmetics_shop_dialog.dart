@@ -3,13 +3,16 @@ import 'package:flutter/material.dart';
 import '../../services/xp_service.dart';
 import '../../services/haptic_service.dart';
 import '../../theme_constants.dart';
+import '../../utils/localization.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COSMETICS SHOP DIALOG
 // ─────────────────────────────────────────────────────────────────────────────
 class CosmeticsShopDialog extends StatefulWidget {
   final VoidCallback onChanged;
-  const CosmeticsShopDialog({super.key, required this.onChanged});
+  final AppLang lang;
+  const CosmeticsShopDialog(
+      {super.key, required this.onChanged, required this.lang});
 
   @override
   State<CosmeticsShopDialog> createState() =>
@@ -34,6 +37,7 @@ class _CosmeticsShopDialogState extends State<CosmeticsShopDialog>
 
   @override
   Widget build(BuildContext context) {
+    final l = L(widget.lang);
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding:
@@ -72,10 +76,10 @@ class _CosmeticsShopDialogState extends State<CosmeticsShopDialog>
                       const Icon(Icons.style,
                           color: kGold, size: 22),
                       const SizedBox(width: 10),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Theme Gallery',
-                          style: TextStyle(
+                          l.cosmeticsTitle,
+                          style: const TextStyle(
                             color: kGold,
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
@@ -132,9 +136,9 @@ class _CosmeticsShopDialogState extends State<CosmeticsShopDialog>
                     indicatorColor: kGold,
                     labelColor: kGold,
                     unselectedLabelColor: kGoldDark,
-                    tabs: const [
-                      Tab(text: 'Card Backs'),
-                      Tab(text: 'Board Colors'),
+                    tabs: [
+                      Tab(text: l.cosmeticsCardBacks),
+                      Tab(text: l.cosmeticsBoardColors),
                     ],
                   ),
                 ],

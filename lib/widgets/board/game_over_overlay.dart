@@ -75,9 +75,7 @@ class GameOverOverlay extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                game.isSuddenDeath
-                    ? 'One wrong move — and that\'s it.'
-                    : l.lossSub,
+                game.isSuddenDeath ? l.lossSuddenDeath : l.lossSub,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                     color: Colors.white70,
