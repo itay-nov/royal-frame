@@ -39,7 +39,7 @@ class RoyalFrameApp extends StatelessWidget {
       title: 'Royal Frame',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorSchemeSeed: const Color(0xFFD4AF37),
+        colorSchemeSeed: kGold,
         brightness: Brightness.dark,
         scaffoldBackgroundColor: kBurgundy,
         appBarTheme: const AppBarTheme(
@@ -52,13 +52,16 @@ class RoyalFrameApp extends StatelessWidget {
           style: FilledButton.styleFrom(
             backgroundColor: kGold,
             foregroundColor: kBurgundy,
-            textStyle: const TextStyle(
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.8,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
+            textStyle: kTsButton,
+            shape: const RoundedRectangleBorder(borderRadius: kBrSm),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: kGold,
+            side: const BorderSide(color: kGold),
+            textStyle: kTsButton,
+            shape: const RoundedRectangleBorder(borderRadius: kBrSm),
           ),
         ),
         textButtonTheme: TextButtonThemeData(
