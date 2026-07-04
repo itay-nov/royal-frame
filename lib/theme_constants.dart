@@ -38,7 +38,7 @@ const kDiffExpert     = Color(0xFFFF5252);
 // classic reuses kGold / kGoldDark; expert dark reuses kCardRed.
 
 // ── Promoted call-site colors ────────────────────────────────────────────────
-const kTextDark          = Color(0xFF3A0D15); // dark burgundy text on light bg
+const kBurgundyDeep      = Color(0xFF3A0D15); // darkest burgundy — deep dialog surfaces & text on light backgrounds
 const kGoldTintBg        = Color(0x448B6914); // translucent gold button fill
 const kStreakBadgeStart  = Color(0xFFFFD700);
 const kStreakBadgeEnd    = Color(0xFFB8860B);
@@ -46,6 +46,7 @@ const kStreakBadgeGlow   = Color(0x88FFD700);
 const kStreakActiveGreen = Color(0xFF2A5C1A);
 const kRoyalCellGradEdge = Color(0xFF4A3200); // royal cell glow gradient edges
 const kRoyalCellGradMid  = Color(0xFF2A1800); // royal cell glow gradient center
+const kDanger            = Color(0xFFC62828); // destructive actions (leave duel)
 const kRulesPageBurgundy = Color(0xFF4A1A2A);
 const kRulesPageNavy     = Color(0xFF1A2A4A);
 const kRulesPageBrown    = Color(0xFF3A2A1A);

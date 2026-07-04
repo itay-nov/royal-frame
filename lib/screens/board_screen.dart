@@ -25,6 +25,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/daily_goal_service.dart';
 import '../services/xp_service.dart';
 import '../services/badge_service.dart';
+import '../widgets/royal_button.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TUTORIAL HINT TYPES
@@ -1776,9 +1777,9 @@ class _BoardScreenState extends State<BoardScreen>
                 borderWidth = 2.8;
                 gradient = const LinearGradient(
                   colors: [
-                    Color(0xFF4A3200),
-                    Color(0xFF2A1800),
-                    Color(0xFF4A3200),
+                    kRoyalCellGradEdge,
+                    kRoyalCellGradMid,
+                    kRoyalCellGradEdge,
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -1955,11 +1956,13 @@ class _BoardScreenState extends State<BoardScreen>
     return '$m:$s';
   }
 
+  // Canonical difficulty accents (easy=green, medium=blue) — this badge
+  // previously had easy/medium swapped relative to the difficulty picker.
   Color get _difficultyColor => switch (_difficulty) {
-        GameDifficulty.easy    => const Color(0xFF64B5F6),
-        GameDifficulty.medium  => const Color(0xFF4CAF50),
+        GameDifficulty.easy    => kDiffEasy,
+        GameDifficulty.medium  => kDiffMedium,
         GameDifficulty.classic => kGold,
-        GameDifficulty.expert  => const Color(0xFFFF5252),
+        GameDifficulty.expert  => kDiffExpert,
       };
 
   String get _difficultyLabel => switch (_difficulty) {
@@ -2159,7 +2162,8 @@ class _BoardScreenState extends State<BoardScreen>
                               ),
                               FilledButton(
                                 style: FilledButton.styleFrom(
-                                    backgroundColor: Colors.red.shade800),
+                                    backgroundColor: kDanger,
+                                    foregroundColor: Colors.white),
                                 onPressed: () {
                                   Navigator.pop(dialogContext);
                                   final name = FirebaseAuth
@@ -2729,13 +2733,8 @@ class _BoardScreenState extends State<BoardScreen>
                       numberOfParticles: 40,
                       gravity: 0.25,
                       emissionFrequency: 0.05,
-                      colors: const [
-                        kGold,
-                        kGoldLight,
-                        Colors.white,
-                        Color(0xFFE91E63),
-                        Color(0xFF2196F3),
-                      ],
+                      // Brand palette — replaces the off-brand pink/blue.
+                      colors: kConfettiColors,
                       shouldLoop: false,
                     ),
                   ),
@@ -3022,59 +3021,45 @@ class _BoardScreenState extends State<BoardScreen>
                 ),
               ),
 
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kGold,
-                  backgroundColor: const Color(0x448B6914),
-                  side: const BorderSide(color: kGold, width: 1.5),
-                  minimumSize: const Size(double.infinity, 52),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                ),
+              RoyalButton(
+                label: _l.winBtn,
+                icon: Icons.refresh,
+                variant: RoyalButtonVariant.emphasized,
+                expand: true,
+                minHeight: 52,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 16),
                 onPressed: _restartCurrentGame,
-                icon: const Icon(Icons.refresh),
-                label: Text(_l.winBtn, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
               const SizedBox(height: 10),
 
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kGold,
-                  side: const BorderSide(color: kGold, width: 1.5),
-                  minimumSize: const Size(double.infinity, 44),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                ),
+              RoyalButton(
+                label: _lang == AppLang.he ? 'בחר רמה' : 'Change Difficulty',
+                icon: Icons.tune,
+                variant: RoyalButtonVariant.secondary,
+                expand: true,
+                minHeight: 44,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 10),
                 onPressed: _openDifficultyPicker,
-                icon: const Icon(Icons.tune, size: 18),
-                label: Text(_lang == AppLang.he ? 'בחר רמה' : 'Change Difficulty',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
               const SizedBox(height: 8),
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kGold,
-                  side: const BorderSide(color: kGold, width: 1.5),
-                  minimumSize: const Size(double.infinity, 44),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                ),
+              RoyalButton(
+                label: _l.shareVictoryBtn,
+                icon: Icons.share,
+                variant: RoyalButtonVariant.secondary,
+                expand: true,
+                minHeight: 44,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 10),
                 onPressed: () => _shareVictory(totalScore),
-                icon: const Icon(Icons.share, size: 18),
-                label: Text(
-                  _l.shareVictoryBtn,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
               ),
               const SizedBox(height: 8),
-              TextButton.icon(
-                style: TextButton.styleFrom(
-                  foregroundColor: kGoldLight,
-                  backgroundColor: Colors.transparent,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  side: BorderSide.none,
-                ),
+              RoyalButton(
+                label: _lang == AppLang.he ? 'תפריט ראשי' : 'Main Menu',
+                icon: Icons.home_outlined,
+                variant: RoyalButtonVariant.tertiary,
                 onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.home_outlined, size: 16),
-                label: Text(_lang == AppLang.he ? 'תפריט ראשי' : 'Main Menu',
-                  style: const TextStyle(fontSize: 13)),
               ),
             ],
           ),
@@ -3112,18 +3097,18 @@ class _BoardScreenState extends State<BoardScreen>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: const RadialGradient(
-                colors: [Color(0xFFFFD700), Color(0xFFB8860B)],
+                colors: [kStreakBadgeStart, kStreakBadgeEnd],
               ),
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0x88FFD700),
+                  color: kStreakBadgeGlow,
                   blurRadius: 6,
                   spreadRadius: 1,
                 ),
               ],
             ),
             child: const Center(
-              child: Icon(Icons.check, size: 16, color: Color(0xFF3A0D15)),
+              child: Icon(Icons.check, size: 16, color: kBurgundyDeep),
             ),
           ),
         ),
@@ -3271,59 +3256,45 @@ class _BoardScreenState extends State<BoardScreen>
                 ),
               ),
 
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kGold,
-                  backgroundColor: const Color(0x448B6914),
-                  side: const BorderSide(color: kGold, width: 1.5),
-                  minimumSize: const Size(double.infinity, 52),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                ),
+              RoyalButton(
+                label: _l.lossBtn,
+                icon: Icons.refresh,
+                variant: RoyalButtonVariant.emphasized,
+                expand: true,
+                minHeight: 52,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 16),
                 onPressed: _restartCurrentGame,
-                icon: const Icon(Icons.refresh),
-                label: Text(_l.lossBtn, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
               const SizedBox(height: 10),
 
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kGold,
-                  side: const BorderSide(color: kGold, width: 1.5),
-                  minimumSize: const Size(double.infinity, 44),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                ),
+              RoyalButton(
+                label: _lang == AppLang.he ? 'בחר רמה' : 'Change Difficulty',
+                icon: Icons.tune,
+                variant: RoyalButtonVariant.secondary,
+                expand: true,
+                minHeight: 44,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 10),
                 onPressed: _openDifficultyPicker,
-                icon: const Icon(Icons.tune, size: 18),
-                label: Text(_lang == AppLang.he ? 'בחר רמה' : 'Change Difficulty',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
               const SizedBox(height: 8),
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kGold,
-                  side: const BorderSide(color: kGold, width: 1.5),
-                  minimumSize: const Size(double.infinity, 44),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                ),
+              RoyalButton(
+                label: _l.shareScoreBtn,
+                icon: Icons.share,
+                variant: RoyalButtonVariant.secondary,
+                expand: true,
+                minHeight: 44,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 10),
                 onPressed: _shareGameOver,
-                icon: const Icon(Icons.share, size: 18),
-                label: Text(
-                  _l.shareScoreBtn,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
               ),
               const SizedBox(height: 8),
-              TextButton.icon(
-                style: TextButton.styleFrom(
-                  foregroundColor: kGoldLight,
-                  backgroundColor: Colors.transparent,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  side: BorderSide.none,
-                ),
+              RoyalButton(
+                label: _lang == AppLang.he ? 'תפריט ראשי' : 'Main Menu',
+                icon: Icons.home_outlined,
+                variant: RoyalButtonVariant.tertiary,
                 onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.home_outlined, size: 16),
-                label: Text(_lang == AppLang.he ? 'תפריט ראשי' : 'Main Menu',
-                  style: const TextStyle(fontSize: 13)),
               ),
             ],
           ),
@@ -3370,32 +3341,32 @@ class _DifficultyPickerDialogState
         emoji: '🌱',
         name: isHe ? 'קל' : 'Easy',
         subtitle: isHe ? 'מפנים זוגות מתי שרוצים.\nניקוד ×0.25' : 'Clear pairs whenever you want.\nScore ×0.25',
-        accentLight: const Color(0xFF4CAF50),
-        accentDark: const Color(0xFF2E7D32),
+        accentLight: kDiffEasy,
+        accentDark: kDiffEasyDark,
       ),
       (
         diff: GameDifficulty.medium,
         emoji: '☀️',
         name: isHe ? 'בינוני' : 'Medium',
         subtitle: isHe ? 'ללא מלכים — 8 תאי זבל.\nניקוד ×0.5' : 'No Kings — 8 dump slots.\nScore ×0.5',
-        accentLight: const Color(0xFF64B5F6),
-        accentDark: const Color(0xFF1565C0),
+        accentLight: kDiffMedium,
+        accentDark: kDiffMediumDark,
       ),
       (
         diff: GameDifficulty.classic,
         emoji: '⚔️',
         name: isHe ? 'קלאסי' : 'Classic',
         subtitle: isHe ? 'חוקים רגילים.\nניקוד ×1.0' : 'Standard rules.\nScore ×1.0',
-        accentLight: const Color(0xFFD4AF37),
-        accentDark: const Color(0xFF9A7B1A),
+        accentLight: kGold,
+        accentDark: kGoldDark,
       ),
       (
         diff: GameDifficulty.expert,
         emoji: '💣',
         name: isHe ? 'מומחה' : 'Expert',
         subtitle: isHe ? 'פצצה 3 דקות + מוות פתאומי.\nניקוד ×2.0' : '3-min bomb + Sudden Death.\nScore ×2.0',
-        accentLight: const Color(0xFFFF5252),
-        accentDark: const Color(0xFFB71C1C),
+        accentLight: kDiffExpert,
+        accentDark: kCardRed,
       ),
     ];
   }
@@ -3409,7 +3380,7 @@ class _DifficultyPickerDialogState
       child: Container(
         constraints: const BoxConstraints(maxWidth: 400),
         decoration: BoxDecoration(
-          color: const Color(0xFF3A0D15),
+          color: kBurgundyDeep,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: kGold, width: 1.8),
           boxShadow: [
@@ -3632,7 +3603,7 @@ class _CosmeticsShopDialogState extends State<_CosmeticsShopDialog>
       child: Container(
         constraints: const BoxConstraints(maxWidth: 420),
         decoration: BoxDecoration(
-          color: const Color(0xFF3A0D15),
+          color: kBurgundyDeep,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: kGold, width: 1.8),
           boxShadow: [
@@ -3818,12 +3789,12 @@ class _CosmeticsShopDialogState extends State<_CosmeticsShopDialog>
                               errorBuilder: (_, __, ___) =>
                                   ColoredBox(
                                 color: item.fallbackColor ??
-                                    const Color(0xFFB71C1C),
+                                    kCardRed,
                               ),
                             )
                           : ColoredBox(
                               color: item.fallbackColor ??
-                                  const Color(0xFFB71C1C)))
+                                  kCardRed))
                       : ColoredBox(
                           color: item.boardColor ?? kBurgundy),
 

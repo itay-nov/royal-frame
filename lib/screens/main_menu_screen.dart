@@ -373,7 +373,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       child: FilledButton.icon(
         style: FilledButton.styleFrom(
           backgroundColor: isHighlight
-              ? const Color(0xFF2A5C1A)
+              ? kStreakActiveGreen
               : kBurgundyLight,
           foregroundColor: kGold,
           side: BorderSide(

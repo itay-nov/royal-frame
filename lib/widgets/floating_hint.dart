@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme_constants.dart';
+
 /// Non-blocking floating hint bubble.
 /// Positioning is handled by the caller (e.g. Positioned).
 class FloatingHint extends StatefulWidget {
@@ -71,7 +73,7 @@ class _FloatingHintState extends State<FloatingHint>
             widget.message,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: const Color(0xFF3A0D15), // dark burgundy — readable on white
+              color: kBurgundyDeep, // readable on the white bubble
               fontSize: 12,
               fontWeight: FontWeight.w800,
               height: 1.45,
