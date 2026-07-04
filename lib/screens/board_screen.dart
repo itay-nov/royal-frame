@@ -27,6 +27,7 @@ import '../services/xp_service.dart';
 import '../services/badge_service.dart';
 import '../utils/app_feedback.dart';
 import '../widgets/board/deck_tag.dart';
+import '../widgets/board/duel_hud.dart';
 import '../widgets/dialogs/cosmetics_shop_dialog.dart';
 import '../widgets/dialogs/difficulty_picker_dialog.dart';
 import '../widgets/board/flying_clear_card.dart';
@@ -2571,7 +2572,7 @@ class _BoardScreenState extends State<BoardScreen>
                   if (_duelSession != null &&
                       game.phase != Phase.winner &&
                       game.phase != Phase.gameOver)
-                    _buildDuelHud(),
+                    _duelHudHost(),
 
                   // Duel comparison screen — shown when both players finish
                   if (_duelSession != null && _showDuelResult &&
@@ -2762,129 +2763,19 @@ class _BoardScreenState extends State<BoardScreen>
     );
   }
 
-  Widget _buildDuelHud() {
+  /// Hosts [DuelHud]: hides it while the result screen is up and resolves
+  /// the identity/score inputs from screen state.
+  Widget _duelHudHost() {
     if (_showDuelResult) return const SizedBox.shrink();
     final session = _duelSession;
     if (session == null) return const SizedBox.shrink();
-
-    final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    final isHost = session.hostUid == myUid;
-    final myScore = game.score;
-    final opponentName = isHost
-        ? (session.guestName ?? 'Opponent')
-        : session.hostName;
-
-    // Result banner when duel is finished
-    if (session.isFinished && session.abandonedBy == null) {
-      final iWon = session.winnerId == myUid;
-      return Positioned(
-        top: 0,
-        left: 0,
-        right: 0,
-        child: IgnorePointer(
-          child: Container(
-            color: iWon
-                ? kGold.withValues(alpha: 0.88)
-                : Colors.redAccent.withValues(alpha: 0.82),
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  iWon ? '  You Win the Duel!' : '  Opponent Wins the Duel',
-                  style: TextStyle(
-                    color: iWon ? Colors.black : Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    // Live score HUD strip at the bottom
-    return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: IgnorePointer(
-        child: Container(
-          color: Colors.black.withValues(alpha: 0.65),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Row(
-            children: [
-              // My score
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'YOU',
-                      style: TextStyle(
-                        color: kGoldLight,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                    Text(
-                      '$myScore',
-                      style: const TextStyle(
-                        color: kGold,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // VS divider
-              Container(
-                width: 1,
-                height: 32,
-                color: kGoldDark.withValues(alpha: 0.6),
-                margin: const EdgeInsets.symmetric(horizontal: 12),
-              ),
-              // Opponent score
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      opponentName.toUpperCase(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white60,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                    Text(
-                      '$_opponentScore',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return DuelHud(
+      session: session,
+      myUid: FirebaseAuth.instance.currentUser?.uid ?? '',
+      myScore: game.score,
+      opponentScore: _opponentScore,
     );
   }
-
 
   Widget _buildCompactIcon(
       IconData icon, Color color, VoidCallback? onTap) {
