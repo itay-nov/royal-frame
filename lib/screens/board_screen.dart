@@ -30,6 +30,7 @@ import '../widgets/board/deck_tag.dart';
 import '../widgets/dialogs/cosmetics_shop_dialog.dart';
 import '../widgets/dialogs/difficulty_picker_dialog.dart';
 import '../widgets/board/flying_clear_card.dart';
+import '../widgets/board/game_over_overlay.dart';
 import '../widgets/royal_button.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2564,7 +2565,7 @@ class _BoardScreenState extends State<BoardScreen>
 
                   if (game.phase == Phase.gameOver &&
                       _showGameOverOverlay)
-                    _buildGameOverOverlay(),
+                    _gameOverOverlayHost(),
 
                   // Duel HUD — live opponent score + result banner
                   if (_duelSession != null &&
@@ -3151,167 +3152,30 @@ class _BoardScreenState extends State<BoardScreen>
     );
   }
 
-  Widget _buildGameOverOverlay() {
+  /// Hosts [GameOverOverlay]. Keeps the one-shot stats side effect with the
+  /// screen state; the overlay itself is pure visual.
+  // TODO(defect-report): this write fires during build (guarded by
+  // _statsUpdatedThisGame). Pre-existing behavior, intentionally preserved —
+  // see the sprint's final defect report before changing.
+  Widget _gameOverOverlayHost() {
     if (!_statsUpdatedThisGame) {
       _statsUpdatedThisGame = true;
       DbService().updatePlayerStats(game.score, false);
       DailyGoalService.addProgress(GoalType.scorePoints, game.score);
     }
-    final deckLeft = game.cardsRemainingDisplay;
-    const textShadow = [
-      Shadow(color: Colors.black, blurRadius: 8, offset: Offset(0, 2)),
-    ];
-
-    final int xpGained = switch (_difficulty) {
-      GameDifficulty.easy    => 12,
-      GameDifficulty.medium  => 25,
-      GameDifficulty.classic => 50,
-      GameDifficulty.expert  => 100,
-    };
-
-    return Container(
-      color: Colors.black.withValues(alpha: 0.40),
-      child: Center(
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 28),
-          padding:
-              const EdgeInsets.symmetric(vertical: 28, horizontal: 22),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: kBlockedBorder, width: 1.8),
-            boxShadow: [
-              BoxShadow(
-                color: kBlockedBorder.withValues(alpha: 0.28),
-                blurRadius: 28,
-                spreadRadius: 2,
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                game.isSuddenDeath ? '💣' : '💀',
-                style: const TextStyle(fontSize: 48),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                _l.lossTitle,
-                style: const TextStyle(
-                  color: kBlockedBorder,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
-                  shadows: textShadow,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                game.isSuddenDeath
-                    ? 'One wrong move — and that\'s it.'
-                    : _l.lossSub,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
-                    shadows: textShadow),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 7),
-                decoration: BoxDecoration(
-                  color: kBurgundy.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                      color: kGoldDark.withValues(alpha: 0.5), width: 1),
-                ),
-                child: Text(
-                  _l.lossCardsLeft(deckLeft),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: kGoldLight,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      shadows: textShadow),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // XP consolation badge
-              Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(20),
-                  border:
-                      Border.all(color: kGoldDark.withValues(alpha: 0.5)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.star_outline,
-                        color: kGoldLight, size: 14),
-                    const SizedBox(width: 6),
-                    Text(
-                      '+$xpGained XP  — keep going!',
-                      style: const TextStyle(
-                        color: kGoldLight,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              RoyalButton(
-                label: _l.lossBtn,
-                icon: Icons.refresh,
-                variant: RoyalButtonVariant.emphasized,
-                expand: true,
-                minHeight: 52,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 16),
-                onPressed: _restartCurrentGame,
-              ),
-              const SizedBox(height: 10),
-
-              RoyalButton(
-                label: _lang == AppLang.he ? 'בחר רמה' : 'Change Difficulty',
-                icon: Icons.tune,
-                variant: RoyalButtonVariant.secondary,
-                expand: true,
-                minHeight: 44,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 10),
-                onPressed: _openDifficultyPicker,
-              ),
-              const SizedBox(height: 8),
-              RoyalButton(
-                label: _l.shareScoreBtn,
-                icon: Icons.share,
-                variant: RoyalButtonVariant.secondary,
-                expand: true,
-                minHeight: 44,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 10),
-                onPressed: _shareGameOver,
-              ),
-              const SizedBox(height: 8),
-              RoyalButton(
-                label: _lang == AppLang.he ? 'תפריט ראשי' : 'Main Menu',
-                icon: Icons.home_outlined,
-                variant: RoyalButtonVariant.tertiary,
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return GameOverOverlay(
+      game: game,
+      lang: _lang,
+      xpGained: switch (_difficulty) {
+        GameDifficulty.easy    => 12,
+        GameDifficulty.medium  => 25,
+        GameDifficulty.classic => 50,
+        GameDifficulty.expert  => 100,
+      },
+      onTryAgain: _restartCurrentGame,
+      onChangeDifficulty: _openDifficultyPicker,
+      onShare: _shareGameOver,
+      onMainMenu: () => Navigator.of(context).pop(),
     );
   }
 }
