@@ -2626,8 +2626,14 @@ class _BoardScreenState extends State<BoardScreen>
                           _showWelcomeModals = false;
                           _phaseAComplete = true;
                         });
+                        // Persist "seen" so a cold launch never re-triggers
+                        // the tutorial — but do NOT end the session's
+                        // tutorial here: complete() would reset the phase
+                        // to done and kill the Phase B/C hint bubbles
+                        // (top-left pulsing hints) that must follow the
+                        // fourth modal.
                         TutorialManager.advance(TutorialPhase.fillHints);
-                        TutorialManager.complete();
+                        TutorialManager.markSeen();
                         WidgetsBinding.instance.addPostFrameCallback(
                           (_) => _evaluateFillHint(),
                         );

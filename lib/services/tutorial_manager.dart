@@ -42,13 +42,22 @@ class TutorialManager {
     if (next == TutorialPhase.done) isActive = false;
   }
 
-  /// Marks the tutorial as done locally AND in Firestore (fire-and-forget).
-  static Future<void> complete() async {
-    isActive = false;
-    phase = TutorialPhase.done;
+  /// Persists "tutorial seen" (local + Firestore) WITHOUT touching the
+  /// in-session state — the live tutorial keeps running through its
+  /// fillHints/clearHints phases. Call this when Phase A finishes so a
+  /// cold launch never re-triggers the tutorial; call [complete] only
+  /// when the session's tutorial has truly ended.
+  static Future<void> markSeen() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefKey, true);
     _persistToFirestore();
+  }
+
+  /// Ends the tutorial for this session AND marks it done persistently.
+  static Future<void> complete() async {
+    isActive = false;
+    phase = TutorialPhase.done;
+    await markSeen();
   }
 
   /// Called at app startup / login. Reads the user's Firestore document and,
