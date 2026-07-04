@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/app_feedback.dart';
+
 enum TutorialPhase { none, modals, fillHints, clearHints, done }
 
 /// Singleton that tracks tutorial state across the session.
@@ -88,8 +90,8 @@ class TutorialManager {
 
   // ── Private ─────────────────────────────────────────────────────────────────
 
-  /// Fire-and-forget write. Errors are intentionally swallowed — a failed
-  /// Firestore write doesn't break the game; the local flag is already set.
+  /// Fire-and-forget write. A failed Firestore write doesn't break the
+  /// game (the local flag is already set), but it must be debug-visible.
   static void _persistToFirestore() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -97,6 +99,6 @@ class TutorialManager {
         .collection('players')
         .doc(uid)
         .set({_firestoreField: true}, SetOptions(merge: true))
-        .catchError((_) {});
+        .catchError((e) => logError('tutorial.persist', e));
   }
 }

@@ -67,6 +67,25 @@ class RoyalFrameApp extends StatelessWidget {
         textButtonTheme: TextButtonThemeData(
           style: TextButton.styleFrom(foregroundColor: kGoldLight),
         ),
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: kBurgundyLight,
+          behavior: SnackBarBehavior.floating,
+          contentTextStyle: const TextStyle(
+            color: kGoldLight,
+            fontWeight: FontWeight.w600,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: kBrMd,
+            side: const BorderSide(color: kGold, width: 1),
+          ),
+        ),
+        dialogTheme: const DialogThemeData(
+          backgroundColor: kBurgundyLight,
+          shape: RoundedRectangleBorder(
+            borderRadius: kBrLg,
+            side: BorderSide(color: kGold, width: 1.5),
+          ),
+        ),
       ),
       home: initialName == null
           ? const WelcomeScreen()

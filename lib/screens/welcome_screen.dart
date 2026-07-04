@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme_constants.dart';
+import '../utils/app_feedback.dart';
 import '../utils/localization.dart';
 import '../services/auth_service.dart';
 import '../services/db_service.dart';
@@ -67,22 +68,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   void _showError(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white)),
-        backgroundColor: Colors.red.shade800,
-      ),
-    );
+    showAppSnack(context, message, isError: true);
   }
 
   void _showInfo(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white)),
-        backgroundColor: kBurgundyLight,
-      ),
-    );
+    showAppSnack(context, message);
   }
 
   // ─── Guest login ──────────────────────────────────────────────────────────

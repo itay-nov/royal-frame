@@ -25,6 +25,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/daily_goal_service.dart';
 import '../services/xp_service.dart';
 import '../services/badge_service.dart';
+import '../utils/app_feedback.dart';
 import '../widgets/royal_button.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -219,9 +220,11 @@ class _BoardScreenState extends State<BoardScreen>
     HapticService.load();
     _initTutorial();
     _startUITimer();
-    DailyGoalService.load();
-    XpService.load();
-    BadgeService.load();
+    // Fire-and-forget by design (the UI renders sensible defaults until
+    // they land), but failures must be visible in debug builds.
+    DailyGoalService.load().catchError((e) => logError('dailyGoal.load', e));
+    XpService.load().catchError((e) => logError('xp.load', e));
+    BadgeService.load().catchError((e) => logError('badge.load', e));
     _initDuelMode();
   }
 
@@ -270,7 +273,7 @@ class _BoardScreenState extends State<BoardScreen>
               textAlign: TextAlign.center,
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
-            backgroundColor: Colors.red.shade800,
+            backgroundColor: kDanger,
             duration: const Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
@@ -300,6 +303,7 @@ class _BoardScreenState extends State<BoardScreen>
       isHost: isHost,
       newSeed: newSeed,
     ).catchError((e) {
+      logError('duel.signalRematch', e);
       if (mounted) setState(() => _myRematchReady = false);
     });
   }
@@ -327,11 +331,41 @@ class _BoardScreenState extends State<BoardScreen>
 
   Future<void> _syncDuelScore() async {
     if (_duelSession == null) return;
-    try {
-      await DuelService.syncScore(_duelSession!.duelId, game.score);
-    } catch (e) {
-      // Swallowed: score sync is periodic — the next sync heals a missed one.
-      // Real logging lands with the resilience pass (Phase 3).
+    // Periodic sync: a false return (offline blip) heals on the next sync,
+    // and syncScore logs its own failures.
+    await DuelService.syncScore(_duelSession!.duelId, game.score);
+  }
+
+  /// Reports this player's final duel result with one retry (markFinished
+  /// is transactional and keyed by uid, so retrying is safe). If the result
+  /// still can't be recorded the player is told — otherwise the duel winner
+  /// could be decided without their final score.
+  Future<void> _reportDuelFinished(String duelId, int score) async {
+    var ok = await DuelService.markFinished(
+      duelId,
+      score,
+      elapsedSeconds: _myFinalElapsedSeconds,
+      royalsPlaced: _myFinalRoyals,
+    );
+    ok = ok ||
+        await DuelService.markFinished(
+          duelId,
+          score,
+          elapsedSeconds: _myFinalElapsedSeconds,
+          royalsPlaced: _myFinalRoyals,
+        );
+    if (!mounted) return;
+    if (ok) {
+      _duelFinishedReported = true;
+    } else {
+      // TODO(l10n): move into L class (Phase 7).
+      showAppSnack(
+        context,
+        _lang == AppLang.he
+            ? 'בעיית חיבור — ייתכן שתוצאת הדו-קרב לא נשמרה.'
+            : 'Connection issue — your duel result may not be recorded.',
+        isError: true,
+      );
     }
   }
 
@@ -903,20 +937,7 @@ class _BoardScreenState extends State<BoardScreen>
         _myFinalElapsedSeconds =
             (game.endTime ?? DateTime.now()).difference(game.startTime).inSeconds;
         _myFinalRoyals = game.royalsPlacedCorrect;
-        () async {
-          try {
-            await DuelService.markFinished(
-              duelId,
-              score,
-              elapsedSeconds: _myFinalElapsedSeconds,
-              royalsPlaced: _myFinalRoyals,
-            );
-            if (mounted) _duelFinishedReported = true;
-          } catch (e) {
-            // Swallowed: duel result reporting failure is handled with a
-            // retry + user-facing snack in the resilience pass (Phase 3).
-          }
-        }();
+        _reportDuelFinished(duelId, score);
       }
       setState(() => _showGameOverOverlay = false);
       _confettiCtrl.play();
@@ -948,20 +969,7 @@ class _BoardScreenState extends State<BoardScreen>
         _myFinalElapsedSeconds =
             (game.endTime ?? DateTime.now()).difference(game.startTime).inSeconds;
         _myFinalRoyals = game.royalsPlacedCorrect;
-        () async {
-          try {
-            await DuelService.markFinished(
-              duelId,
-              score,
-              elapsedSeconds: _myFinalElapsedSeconds,
-              royalsPlaced: _myFinalRoyals,
-            );
-            if (mounted) _duelFinishedReported = true;
-          } catch (e) {
-            // Swallowed: duel result reporting failure is handled with a
-            // retry + user-facing snack in the resilience pass (Phase 3).
-          }
-        }();
+        _reportDuelFinished(duelId, score);
       }
       setState(() => _showGameOverOverlay = false);
       Future.delayed(const Duration(milliseconds: 400), () {
@@ -1018,7 +1026,7 @@ class _BoardScreenState extends State<BoardScreen>
             fontSize: 13,
           ),
         ),
-        backgroundColor: Colors.red.shade800,
+        backgroundColor: kDanger,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(milliseconds: 1800),
         margin: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),

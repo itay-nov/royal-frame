@@ -2,6 +2,8 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../utils/app_feedback.dart';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DUEL SERVICE — Firestore-backed code-based matchmaking for 1v1 duels
 // ─────────────────────────────────────────────────────────────────────────────
@@ -197,32 +199,66 @@ class DuelService {
   // ── Score sync ─────────────────────────────────────────────────────────────
 
   /// Writes the calling player's current score to Firestore.
-  static Future<void> syncScore(String duelId, int score) async {
+  /// Returns false when the write did not happen (offline, missing doc) —
+  /// callers may ignore it for periodic syncs (the next sync heals), but a
+  /// false from the final sync matters.
+  static Future<bool> syncScore(String duelId, int score) async {
     final uid = _auth.currentUser?.uid;
-    if (uid == null) return;
+    if (uid == null) return false;
 
-    final doc = await _duels.doc(duelId).get();
-    if (!doc.exists) return;
+    try {
+      final doc = await _duels.doc(duelId).get();
+      if (!doc.exists) return false;
 
-    final isHost = doc.data()!['hostUid'] == uid;
-    await _duels.doc(duelId).update(
-      isHost ? {'hostScore': score} : {'guestScore': score},
-    );
+      final isHost = doc.data()!['hostUid'] == uid;
+      await _duels.doc(duelId).update(
+        isHost ? {'hostScore': score} : {'guestScore': score},
+      );
+      return true;
+    } catch (e) {
+      logError('duel.syncScore', e);
+      return false;
+    }
   }
 
   // ── Mark finished ──────────────────────────────────────────────────────────
 
   /// Marks this player's game as finished. Once both players have finished,
   /// the higher-score player is recorded as winner.
-  static Future<void> markFinished(
+  /// Returns false when the result was not recorded — callers should retry
+  /// or surface it, otherwise the duel winner may be decided without this
+  /// player's final score.
+  static Future<bool> markFinished(
     String duelId,
     int finalScore, {
     required int elapsedSeconds,
     required int royalsPlaced,
   }) async {
     final uid = _auth.currentUser?.uid;
-    if (uid == null) return;
+    if (uid == null) return false;
 
+    try {
+      await _runMarkFinishedTransaction(
+        duelId,
+        uid,
+        finalScore,
+        elapsedSeconds: elapsedSeconds,
+        royalsPlaced: royalsPlaced,
+      );
+      return true;
+    } catch (e) {
+      logError('duel.markFinished', e);
+      return false;
+    }
+  }
+
+  static Future<void> _runMarkFinishedTransaction(
+    String duelId,
+    String uid,
+    int finalScore, {
+    required int elapsedSeconds,
+    required int royalsPlaced,
+  }) async {
     await _db.runTransaction((tx) async {
       final ref = _duels.doc(duelId);
       final snap = await tx.get(ref);
@@ -261,13 +297,17 @@ class DuelService {
   // ── Abandon ──────────────────────────────────────────────────────────────
 
   /// Marks the duel finished because [playerName] left mid-game.
+  /// Best-effort: the opponent's stream also ends the duel if this write
+  /// never lands, so failure is logged rather than surfaced.
   static Future<void> markAbandoned(String duelId, String playerName) async {
     try {
       await _duels.doc(duelId).update({
         'status': DuelStatus.finished.name,
         'abandonedBy': playerName,
       });
-    } catch (_) {}
+    } catch (e) {
+      logError('duel.markAbandoned', e);
+    }
   }
 
   // ── Rematch ────────────────────────────────────────────────────────────────

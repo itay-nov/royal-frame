@@ -1,6 +1,9 @@
 import 'db_service.dart';
 import 'secure_storage_service.dart';
 
+// NOTE: DbService.saveStreak/loadStreak swallow their own Firestore errors
+// (frozen file — accepted limitation). A failed remote sync here is silent
+// and heals on a later launch; local secure storage stays authoritative.
 class StreakService {
   StreakService._();
 
