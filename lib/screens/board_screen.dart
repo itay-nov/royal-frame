@@ -26,6 +26,8 @@ import '../services/daily_goal_service.dart';
 import '../services/xp_service.dart';
 import '../services/badge_service.dart';
 import '../utils/app_feedback.dart';
+import '../widgets/board/deck_tag.dart';
+import '../widgets/board/flying_clear_card.dart';
 import '../widgets/royal_button.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -636,7 +638,7 @@ class _BoardScreenState extends State<BoardScreen>
           fit: StackFit.expand,
           children: [
             for (int k = 0; k < cards.length; k++)
-              _FlyingClearCard(
+              FlyingClearCard(
                 from: _globalCenter(_cellKeys[indices[k]]) ?? target,
                 to: target,
                 card: _playingCard(cards[k]),
@@ -3875,99 +3877,3 @@ class _CosmeticsShopDialogState extends State<_CosmeticsShopDialog>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UI HELPERS (Tags & Flying Cards)
-// ─────────────────────────────────────────────────────────────────────────────
-class DeckTag extends StatelessWidget {
-  final String text;
-  const DeckTag({super.key, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: kBurgundy.withValues(alpha: 0.90),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-            color: kGoldDark.withValues(alpha: 0.8), width: 1.0),
-      ),
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: const TextStyle(
-          color: kGoldLight,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.5,
-          height: 1.3,
-        ),
-      ),
-    );
-  }
-}
-
-class _FlyingClearCard extends StatefulWidget {
-  final Offset from;
-  final Offset to;
-  final Widget card;
-  final VoidCallback onComplete;
-
-  const _FlyingClearCard({
-    required this.from,
-    required this.to,
-    required this.card,
-    required this.onComplete,
-  });
-
-  @override
-  State<_FlyingClearCard> createState() => _FlyingClearCardState();
-}
-
-class _FlyingClearCardState extends State<_FlyingClearCard>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-    _ctrl.forward().then((_) {
-      if (mounted) widget.onComplete();
-    });
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, child) {
-        final t = Curves.easeInOutCubic.transform(_ctrl.value);
-        final pos = Offset.lerp(widget.from, widget.to, t)!;
-        final scale = 1.0 - (t * 0.08);
-        return Positioned(
-          left: pos.dx - (72.0 * scale) / 2,
-          top: pos.dy - (100.0 * scale) / 2,
-          child: Transform.scale(scale: scale, child: child),
-        );
-      },
-      child: Material(
-        elevation: 10,
-        shadowColor: Colors.black54,
-        borderRadius: BorderRadius.circular(10),
-        clipBehavior: Clip.antiAlias,
-        child: widget.card,
-      ),
-    );
-  }
-}
