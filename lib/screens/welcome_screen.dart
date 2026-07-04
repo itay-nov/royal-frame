@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme_constants.dart';
 import '../utils/app_feedback.dart';
+import '../utils/app_route.dart';
 import '../utils/localization.dart';
 import '../services/auth_service.dart';
 import '../services/db_service.dart';
@@ -62,7 +63,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   void _goToMainMenu() {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const MainMenuScreen()),
+      appRoute(const MainMenuScreen()),
     );
   }
 

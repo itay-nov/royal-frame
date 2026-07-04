@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/game_model.dart';
+import '../../services/haptic_service.dart';
 import '../../theme_constants.dart';
 import '../../utils/localization.dart';
 
@@ -141,8 +142,10 @@ class _DifficultyPickerDialogState
                 children: _data.map((d) {
                   final isChosen = _selected == d.diff;
                   return GestureDetector(
-                    onTap: () =>
-                        setState(() => _selected = d.diff),
+                    onTap: () {
+                      HapticService.light();
+                      setState(() => _selected = d.diff);
+                    },
                     child: AnimatedContainer(
                       duration:
                           const Duration(milliseconds: 180),

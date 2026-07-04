@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme_constants.dart';
 import '../models/game_model.dart';
+import '../utils/app_route.dart';
 import '../utils/localization.dart';
 import 'board_screen.dart';
 import 'duel_setup_screen.dart';
@@ -104,13 +105,12 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
   void _startOrResumeGame({bool isResume = false}) async {
     final returnedGame = await Navigator.of(context).push<GameState>(
-      MaterialPageRoute(
-        builder: (_) =>
-            BoardScreen(
-              existingGame: isResume ? _activeGame : null,
-              showNewGamePicker: !isResume,
-              initialLang: _lang,
-            ),
+      appRoute(
+        BoardScreen(
+          existingGame: isResume ? _activeGame : null,
+          showNewGamePicker: !isResume,
+          initialLang: _lang,
+        ),
       ),
     );
 
@@ -127,9 +127,11 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
   void _startTutorial() async {
     final returnedGame = await Navigator.of(context).push<GameState>(
-      MaterialPageRoute(
-        builder: (_) =>
-            BoardScreen(existingGame: _activeGame, forceTutorial: true, initialLang: _lang),
+      appRoute(
+        BoardScreen(
+            existingGame: _activeGame,
+            forceTutorial: true,
+            initialLang: _lang),
       ),
     );
 
@@ -301,9 +303,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                 _l.menuDuelMode,
                 Icons.sports_kabaddi,
                 () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => DuelSetupScreen(lang: _lang),
-                  ),
+                  appRoute(DuelSetupScreen(lang: _lang)),
                 ),
               ),
               const SizedBox(height: 16),
@@ -314,7 +314,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                   await AuthService().signOut();
                   if (!mounted) return;
                   navigator.pushReplacement(
-                    MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+                    appRoute(const WelcomeScreen()),
                   );
                 },
                 icon: const Icon(Icons.person, color: kGoldDark),

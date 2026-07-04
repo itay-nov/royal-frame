@@ -175,6 +175,8 @@ class _RulesDialogState extends State<RulesDialog> {
                       style: OutlinedButton.styleFrom(
                         foregroundColor: kGoldLight,
                         side: const BorderSide(color: kGold),
+                        minimumSize:
+                            const Size(kMinTouchTarget, kMinTouchTarget),
                       ),
                       onPressed: isHe
                           ? (_page < pages.length - 1
@@ -206,6 +208,8 @@ class _RulesDialogState extends State<RulesDialog> {
                       style: OutlinedButton.styleFrom(
                         foregroundColor: kGoldLight,
                         side: const BorderSide(color: kGold),
+                        minimumSize:
+                            const Size(kMinTouchTarget, kMinTouchTarget),
                       ),
                       onPressed: isHe
                           ? (_page > 0 ? () => _goTo(_page - 1) : null)

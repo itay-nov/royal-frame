@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/xp_service.dart';
+import '../../services/haptic_service.dart';
 import '../../theme_constants.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -183,6 +184,7 @@ class _CosmeticsShopDialogState extends State<CosmeticsShopDialog>
         return GestureDetector(
           onTap: isUnlocked
               ? () async {
+                  HapticService.success();
                   if (isCardBack) {
                     await XpService.equipCardBack(item.id);
                   } else {

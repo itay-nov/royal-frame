@@ -33,6 +33,7 @@ import '../widgets/dialogs/difficulty_picker_dialog.dart';
 import '../widgets/board/flying_clear_card.dart';
 import '../widgets/board/game_over_overlay.dart';
 import '../widgets/board/winner_overlay.dart';
+import '../widgets/overlay_entrance.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TUTORIAL HINT TYPES
@@ -823,6 +824,7 @@ class _BoardScreenState extends State<BoardScreen>
 
   void _undoAction() {
     if (_undo.isEmpty) return;
+    HapticService.selection();
     _redo.add(game.clone());
     setState(() {
       game = _undo.removeLast();
@@ -2098,12 +2100,22 @@ class _BoardScreenState extends State<BoardScreen>
                         const Icon(Icons.emoji_events,
                             size: 18, color: kGold),
                         const SizedBox(width: 4),
-                        Text(
-                          '${game.score}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
+                        AnimatedSwitcher(
+                          duration: kDurFast,
+                          transitionBuilder: (child, anim) =>
+                              FadeTransition(
+                            opacity: anim,
+                            child: ScaleTransition(
+                                scale: anim, child: child),
+                          ),
+                          child: Text(
+                            '${game.score}',
+                            key: ValueKey<int>(game.score),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -2578,13 +2590,15 @@ class _BoardScreenState extends State<BoardScreen>
                   if (_duelSession != null && _showDuelResult &&
                       _duelSession!.abandonedBy == null)
                     Positioned.fill(
-                      child: DuelResultOverlay(
-                        session: _duelSession!,
-                        myUid: FirebaseAuth.instance.currentUser?.uid ?? '',
-                        myElapsedSeconds: _myFinalElapsedSeconds,
-                        myRoyals: _myFinalRoyals,
-                        myRematchReady: _myRematchReady,
-                        onPlayAgain: _onPlayAgainTapped,
+                      child: OverlayEntrance(
+                        child: DuelResultOverlay(
+                          session: _duelSession!,
+                          myUid: FirebaseAuth.instance.currentUser?.uid ?? '',
+                          myElapsedSeconds: _myFinalElapsedSeconds,
+                          myRoyals: _myFinalRoyals,
+                          myRematchReady: _myRematchReady,
+                          onPlayAgain: _onPlayAgainTapped,
+                        ),
                       ),
                     ),
 
@@ -2866,7 +2880,8 @@ class _BoardScreenState extends State<BoardScreen>
       GameDifficulty.expert  => 1000,
     };
 
-    return WinnerOverlay(
+    return OverlayEntrance(
+        child: WinnerOverlay(
       stats: (
         baseScore: baseScore,
         winBonus: winBonus,
@@ -2881,7 +2896,7 @@ class _BoardScreenState extends State<BoardScreen>
       onChangeDifficulty: _openDifficultyPicker,
       onShare: () => _shareVictory(totalScore),
       onMainMenu: () => Navigator.of(context).pop(),
-    );
+    ));
   }
 
   /// Hosts [GameOverOverlay]. Keeps the one-shot stats side effect with the
@@ -2895,7 +2910,8 @@ class _BoardScreenState extends State<BoardScreen>
       DbService().updatePlayerStats(game.score, false);
       DailyGoalService.addProgress(GoalType.scorePoints, game.score);
     }
-    return GameOverOverlay(
+    return OverlayEntrance(
+        child: GameOverOverlay(
       game: game,
       lang: _lang,
       xpGained: switch (_difficulty) {
@@ -2908,6 +2924,6 @@ class _BoardScreenState extends State<BoardScreen>
       onChangeDifficulty: _openDifficultyPicker,
       onShare: _shareGameOver,
       onMainMenu: () => Navigator.of(context).pop(),
-    );
+    ));
   }
 }

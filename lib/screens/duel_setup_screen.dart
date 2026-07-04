@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme_constants.dart';
 import '../services/duel_service.dart';
+import '../utils/app_route.dart';
 import '../utils/localization.dart';
 import 'board_screen.dart';
 
@@ -128,8 +129,8 @@ class _HostTabState extends State<_HostTab> {
   void _launchGame(DuelSession session) {
     _sub?.cancel();
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => BoardScreen(
+      appRoute(
+        BoardScreen(
           duelSession: session,
           isHost: true,
           initialLang: widget.lang,
@@ -327,8 +328,8 @@ class _JoinTabState extends State<_JoinTab> {
       final session = await DuelService.joinDuel(code);
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => BoardScreen(
+        appRoute(
+          BoardScreen(
             duelSession: session,
             isHost: false,
             initialLang: widget.lang,

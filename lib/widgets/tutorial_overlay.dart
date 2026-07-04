@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/haptic_service.dart';
 import '../theme_constants.dart';
 import '../utils/localization.dart';
 
@@ -292,9 +293,14 @@ class _TutorialOverlayState extends State<TutorialOverlay>
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                            onPressed: _isLast
-                                ? () => widget.onFinish(skipped: false)
-                                : () => _goTo(_step + 1),
+                            onPressed: () {
+                              HapticService.light();
+                              if (_isLast) {
+                                widget.onFinish(skipped: false);
+                              } else {
+                                _goTo(_step + 1);
+                              }
+                            },
                             child: Text(
                               _isLast
                                   ? (isHe ? "יאללה נשחק! 👑" : "Let's Play! 👑")
