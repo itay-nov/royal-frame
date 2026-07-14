@@ -22,7 +22,10 @@ const double _kLabelFontSize = 16.0;
 const int _kMaxPlayerNameLength = 30;
 
 class WelcomeScreen extends StatefulWidget {
-  const WelcomeScreen({super.key});
+  const WelcomeScreen({super.key, this.authService});
+
+  /// Test seam for delayed native phone-auth callbacks.
+  final AuthService? authService;
 
   @override
   State<WelcomeScreen> createState() => _WelcomeScreenState();
@@ -30,7 +33,7 @@ class WelcomeScreen extends StatefulWidget {
 
 class _WelcomeScreenState extends State<WelcomeScreen> {
   final TextEditingController _nameCtrl = TextEditingController();
-  final AuthService _authService = AuthService();
+  late final AuthService _authService;
   bool _isLoading = false;
   AppLang _lang = AppLang.en;
   L get _l => L(_lang);
@@ -41,6 +44,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   @override
   void initState() {
     super.initState();
+    _authService = widget.authService ?? AuthService();
     _loadSavedLang();
     Future.delayed(const Duration(milliseconds: 150), () {
       if (mounted) setState(() => _visible = true);
@@ -219,18 +223,22 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   /// Native (Android / iOS) path.
   Future<void> _handlePhoneNative(String phoneNumber) async {
-    String? verificationId;
-    bool autoVerified = false;
-
+    final attempt = _PhoneVerificationAttempt();
     await _authService.sendSmsCodeNative(
       phoneNumber: phoneNumber,
-      onCodeSent: (id, _) {
-        if (!mounted) return;
-        verificationId = id;
+      onCodeSent: (verificationId, _) async {
+        if (!mounted ||
+            attempt.authenticationStarted ||
+            attempt.codeDialogOpen) {
+          return;
+        }
+        await _confirmNativeSmsCode(verificationId, attempt);
       },
       onAutoVerified: (userCred) async {
-        if (!mounted) return;
-        autoVerified = true;
+        if (!mounted || !attempt.claimAuthentication()) return;
+        if (attempt.codeDialogOpen) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
         await _savePhonePlayerAndNavigate(userCred);
       },
       onError: (error) {
@@ -239,23 +247,30 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         _showError(error);
       },
     );
+  }
 
+  Future<void> _confirmNativeSmsCode(
+    String verificationId,
+    _PhoneVerificationAttempt attempt,
+  ) async {
     if (!mounted) return;
-    if (autoVerified) return;
-
     setState(() => _isLoading = false);
 
-    if (verificationId == null) return;
-
-    final smsCode = await _showSmsCodeDialog();
-    if (!mounted) return;
-    if (smsCode == null || smsCode.isEmpty) return;
+    attempt.codeDialogOpen = true;
+    final String? smsCode;
+    try {
+      smsCode = await _showSmsCodeDialog();
+    } finally {
+      attempt.codeDialogOpen = false;
+    }
+    if (!mounted || smsCode == null || smsCode.isEmpty) return;
+    if (!attempt.claimAuthentication()) return;
 
     setState(() => _isLoading = true);
 
     try {
       final userCred = await _authService.confirmSmsCodeNative(
-        verificationId: verificationId!,
+        verificationId: verificationId,
         smsCode: smsCode,
       );
       if (!mounted) return;
@@ -331,32 +346,27 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   // ─── Dialogs ──────────────────────────────────────────────────────────────
 
-  Future<String?> _showPhoneInputDialog() async {
-    final ctrl = TextEditingController();
-    final result = await showDialog<String>(
+  Future<String?> _showPhoneInputDialog() {
+    return showDialog<String>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.7),
       builder: (ctx) => _RoyalDialog(
         title: 'Phone Number',
         subtitle: 'Enter in international format',
         hintText: '+972 50 123 4567',
-        controller: ctrl,
         keyboardType: TextInputType.phone,
         inputFormatters: [
           FilteringTextInputFormatter.allow(RegExp(r'[+\d\s\-]')),
         ],
         confirmLabel: 'Send Code',
-        onConfirm: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+        onConfirm: (value) => Navigator.of(ctx).pop(value),
         onCancel: () => Navigator.of(ctx).pop(null),
       ),
     );
-    ctrl.dispose();
-    return result;
   }
 
-  Future<String?> _showSmsCodeDialog() async {
-    final ctrl = TextEditingController();
-    final result = await showDialog<String>(
+  Future<String?> _showSmsCodeDialog() {
+    return showDialog<String>(
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black.withValues(alpha: 0.7),
@@ -364,26 +374,22 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         title: 'Verification Code',
         subtitle: 'Enter the 6-digit code sent to your phone',
         hintText: '000000',
-        controller: ctrl,
         keyboardType: TextInputType.number,
         inputFormatters: [
           FilteringTextInputFormatter.digitsOnly,
           LengthLimitingTextInputFormatter(6),
         ],
         confirmLabel: 'Verify',
-        onConfirm: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+        onConfirm: (value) => Navigator.of(ctx).pop(value),
         onCancel: () => Navigator.of(ctx).pop(null),
       ),
     );
-    ctrl.dispose();
-    return result;
   }
 
   /// Mandatory name-picker shown after phone sign-in.
   /// [barrierDismissible] is false so the user must pick a name or cancel.
-  Future<String?> _showPlayerNameDialog() async {
-    final ctrl = TextEditingController();
-    final result = await showDialog<String>(
+  Future<String?> _showPlayerNameDialog() {
+    return showDialog<String>(
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black.withValues(alpha: 0.7),
@@ -391,19 +397,15 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         title: 'Choose Your Name',
         subtitle: 'This will be your name on the leaderboard',
         hintText: 'e.g. King Arthur',
-        controller: ctrl,
         keyboardType: TextInputType.name,
         inputFormatters: [LengthLimitingTextInputFormatter(20)],
         confirmLabel: 'Confirm',
-        onConfirm: () {
-          final name = ctrl.text.trim();
+        onConfirm: (name) {
           if (name.isNotEmpty) Navigator.of(ctx).pop(name);
         },
         onCancel: () => Navigator.of(ctx).pop(null),
       ),
     );
-    ctrl.dispose();
-    return result;
   }
 
   // ─── Build ─────────────────────────────────────────────────────────────────
@@ -711,16 +713,26 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   }
 }
 
+class _PhoneVerificationAttempt {
+  bool authenticationStarted = false;
+  bool codeDialogOpen = false;
+
+  bool claimAuthentication() {
+    if (authenticationStarted) return false;
+    authenticationStarted = true;
+    return true;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Royal-themed reusable dialog
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _RoyalDialog extends StatelessWidget {
+class _RoyalDialog extends StatefulWidget {
   const _RoyalDialog({
     required this.title,
     required this.subtitle,
     required this.hintText,
-    required this.controller,
     required this.keyboardType,
     required this.inputFormatters,
     required this.confirmLabel,
@@ -731,12 +743,26 @@ class _RoyalDialog extends StatelessWidget {
   final String title;
   final String subtitle;
   final String hintText;
-  final TextEditingController controller;
   final TextInputType keyboardType;
   final List<TextInputFormatter> inputFormatters;
   final String confirmLabel;
-  final VoidCallback onConfirm;
+  final ValueChanged<String> onConfirm;
   final VoidCallback onCancel;
+
+  @override
+  State<_RoyalDialog> createState() => _RoyalDialogState();
+}
+
+class _RoyalDialogState extends State<_RoyalDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _confirm() => widget.onConfirm(_controller.text.trim());
 
   @override
   Widget build(BuildContext context) {
@@ -761,7 +787,7 @@ class _RoyalDialog extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              title,
+              widget.title,
               style: const TextStyle(
                 color: kGold,
                 fontSize: 20,
@@ -771,7 +797,7 @@ class _RoyalDialog extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              subtitle,
+              widget.subtitle,
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: kGoldDark.withValues(alpha: 0.75),
@@ -781,9 +807,9 @@ class _RoyalDialog extends StatelessWidget {
             const SizedBox(height: 20),
 
             TextField(
-              controller: controller,
-              keyboardType: keyboardType,
-              inputFormatters: inputFormatters,
+              controller: _controller,
+              keyboardType: widget.keyboardType,
+              inputFormatters: widget.inputFormatters,
               autofocus: true,
               style: const TextStyle(
                 color: kGoldLight,
@@ -792,7 +818,7 @@ class _RoyalDialog extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
               decoration: InputDecoration(
-                hintText: hintText,
+                hintText: widget.hintText,
                 hintStyle: TextStyle(
                   color: kGoldDark.withValues(alpha: 0.45),
                   fontSize: 15,
@@ -805,7 +831,7 @@ class _RoyalDialog extends StatelessWidget {
                   borderSide: BorderSide(color: kGold, width: 2),
                 ),
               ),
-              onSubmitted: (_) => onConfirm(),
+              onSubmitted: (_) => _confirm(),
             ),
             const SizedBox(height: 28),
 
@@ -822,7 +848,7 @@ class _RoyalDialog extends StatelessWidget {
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      onPressed: onCancel,
+                      onPressed: widget.onCancel,
                       child: const Text(
                         'Cancel',
                         style: TextStyle(fontSize: 14),
@@ -842,9 +868,9 @@ class _RoyalDialog extends StatelessWidget {
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      onPressed: onConfirm,
+                      onPressed: _confirm,
                       child: Text(
-                        confirmLabel,
+                        widget.confirmLabel,
                         style: const TextStyle(
                           color: kGold,
                           fontSize: 14,

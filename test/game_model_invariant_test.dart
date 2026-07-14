@@ -3,6 +3,20 @@ import 'package:royal_frame/models/game_model.dart';
 
 void main() {
   group('public API hardening', () {
+    test('terminal state is explicit for winner and game over only', () {
+      final game = GameState.newGame(seed: 7);
+      expect(game.isTerminal, isFalse);
+
+      game.phase = Phase.clear;
+      expect(game.isTerminal, isFalse);
+
+      game.phase = Phase.winner;
+      expect(game.isTerminal, isTrue);
+
+      game.phase = Phase.gameOver;
+      expect(game.isTerminal, isTrue);
+    });
+
     test('invalid cell indices are rejected without mutating state', () {
       final game = GameState.newGame(seed: 7);
       final before = game.clone();

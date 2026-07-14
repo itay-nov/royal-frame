@@ -825,8 +825,13 @@ class _BoardScreenState extends State<BoardScreen>
     _redo.clear();
   }
 
+  bool get _canUndo => _undo.isNotEmpty && !game.isTerminal;
+
   void _undoAction() {
-    if (_undo.isEmpty) return;
+    // Terminal rewards and statistics are committed as soon as the game ends.
+    // Reopening that state would make a later result disagree with persisted
+    // rewards, and game-over overlays would remain suppressed by idempotency.
+    if (!_canUndo) return;
     HapticService.selection();
     _redo.add(game.clone());
     setState(() {
@@ -2266,8 +2271,8 @@ class _BoardScreenState extends State<BoardScreen>
                     const SizedBox(width: 2),
                     _buildCompactIcon(
                       Icons.undo,
-                      _undo.isNotEmpty ? kGold : kGoldDark,
-                      _undo.isNotEmpty ? _undoAction : null,
+                      _canUndo ? kGold : kGoldDark,
+                      _canUndo ? _undoAction : null,
                       tooltip: _l.tooltipUndo,
                     ),
                     const SizedBox(width: 2),

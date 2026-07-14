@@ -269,6 +269,7 @@ class GameState {
   ];
 
   bool get boardFull => cells.every((c) => c != null);
+  bool get isTerminal => phase == Phase.winner || phase == Phase.gameOver;
   bool _isValidCellIndex(int index) => index >= 0 && index < cells.length;
   int get remainingInDeck => drawPile.length;
 

@@ -60,14 +60,14 @@ class AppInitializer {
   static Future<String?> _validateGuestSession() async {
     final prefs = await SharedPreferences.getInstance();
     final String? savedName = prefs.getString('playerName');
-    if (savedName == null) return null; // Fresh install — nothing to validate.
-
-    final auth = FirebaseAuth.instance;
+    final user = FirebaseAuth.instance.currentUser;
     return validateSessionStateForTesting(
       savedName: savedName,
-      authenticatedUid: auth.currentUser?.uid,
+      authenticatedUid: user?.uid,
+      authenticatedDisplayName: user?.displayName,
       playerDocExists: _playerDocExistsOnServer,
       ensurePlayerDoc: (uid, name) => DbService().ensurePlayerDoc(uid, name),
+      persistPlayerName: (name) => prefs.setString('playerName', name),
       recoverSession: _recoverSession,
     );
   }
@@ -78,37 +78,55 @@ class AppInitializer {
   static Future<String?> validateSessionStateForTesting({
     required String? savedName,
     required String? authenticatedUid,
+    required String? authenticatedDisplayName,
     required Future<bool?> Function(String uid) playerDocExists,
     required Future<void> Function(String uid, String name) ensurePlayerDoc,
+    required Future<void> Function(String name) persistPlayerName,
     required Future<String?> Function(String savedName) recoverSession,
   }) async {
-    if (savedName == null) return null;
+    var effectiveName = savedName;
+
+    // Authentication can succeed before profile persistence does. If startup
+    // ignored that live user because the local name was absent, onboarding
+    // could sign in anonymously over a Google/phone identity on the next run.
+    if (effectiveName == null && authenticatedUid != null) {
+      effectiveName = _boundedPlayerName(authenticatedDisplayName);
+      await persistPlayerName(effectiveName);
+    }
+
+    if (effectiveName == null) return null;
 
     if (authenticatedUid != null) {
       final bool? exists = await playerDocExists(authenticatedUid);
 
       // Network error / timeout — assume the session is valid rather than
       // wiping a legitimate user who happens to be offline.
-      if (exists == null) return savedName;
+      if (exists == null) return effectiveName;
 
-      if (exists) return savedName; // Healthy session.
+      if (exists) return effectiveName; // Healthy session.
 
       // Preserve a live Firebase identity. Older builds did not create the
       // player document until the first completed game, so treating a missing
       // document as stale could silently replace Google/phone users with an
       // anonymous account.
       try {
-        await ensurePlayerDoc(authenticatedUid, savedName);
+        await ensurePlayerDoc(authenticatedUid, effectiveName);
       } catch (error, stack) {
         // The user is still authenticated; fail open just as we do for an
         // unknown server result and let later writes heal the missing record.
         logError('startup.ensurePlayerDoc', error, stack);
       }
-      return savedName;
+      return effectiveName;
     }
     // else: Auto-Backup restored prefs but no auth user survived — stale.
 
-    return recoverSession(savedName);
+    return recoverSession(effectiveName);
+  }
+
+  static String _boundedPlayerName(String? value) {
+    final normalized = (value ?? '').trim();
+    final fallback = normalized.isEmpty ? 'Player' : normalized;
+    return String.fromCharCodes(fallback.runes.take(30));
   }
 
   /// Server-driven existence check. Returns null when the answer is unknown
