@@ -125,6 +125,15 @@ class L {
   String get btnContinuePhone =>
       isHe ? 'המשך עם טלפון' : 'Continue with Phone';
   String get errEnterName => isHe ? 'נא להזין שם' : 'Please enter a name';
+  String errNameTooLong(int max) => isHe
+      ? 'השם יכול להכיל עד $max תווים'
+      : 'Name must be $max characters or fewer';
+  String get errGuestSignIn => isHe
+      ? 'לא ניתן להתחבר כאורח. בדקו את החיבור ונסו שוב.'
+      : 'Could not sign in as a guest. Check your connection and try again.';
+  String get errProfileSetup => isHe
+      ? 'לא ניתן לשמור את הפרופיל. נסו שוב.'
+      : 'Could not save your profile. Please try again.';
 
   String get rulesTitle => isHe ? 'חוקים' : 'Rules';
   String get rulesBody => isHe

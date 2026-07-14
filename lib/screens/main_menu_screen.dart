@@ -77,6 +77,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
   Future<void> _loadPlayerName() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       _playerName = prefs.getString('playerName') ?? 'Guest';
     });
@@ -114,6 +115,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       ),
     );
 
+    if (!mounted) return;
     setState(() {
       if (returnedGame != null &&
           returnedGame.phase != Phase.winner &&
@@ -135,6 +137,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       ),
     );
 
+    if (!mounted) return;
     setState(() {
       if (returnedGame != null &&
           returnedGame.phase != Phase.winner &&

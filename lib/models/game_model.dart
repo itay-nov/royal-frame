@@ -98,9 +98,15 @@ class CardModel {
 // Medium difficulty overrides the king-corner slots to innerDump after calling this.
 List<SlotType> buildBoardLayout() {
   final s = List.filled(16, SlotType.innerDump);
-  for (final i in [0, 3, 12, 15]) s[i] = SlotType.kingCorner;
-  for (final i in [1, 2, 13, 14]) s[i] = SlotType.queenEdge;
-  for (final i in [4, 8, 7, 11]) s[i] = SlotType.jackEdge;
+  for (final i in [0, 3, 12, 15]) {
+    s[i] = SlotType.kingCorner;
+  }
+  for (final i in [1, 2, 13, 14]) {
+    s[i] = SlotType.queenEdge;
+  }
+  for (final i in [4, 8, 7, 11]) {
+    s[i] = SlotType.jackEdge;
+  }
   return s;
 }
 
@@ -164,10 +170,10 @@ class GameState {
 
   /// Score multiplier applied to the final score breakdown in the win overlay.
   double get scoreMultiplier => switch (difficulty) {
-    GameDifficulty.easy    => 0.25,
-    GameDifficulty.medium  => 0.5,
+    GameDifficulty.easy => 0.25,
+    GameDifficulty.medium => 0.5,
     GameDifficulty.classic => 1.0,
-    GameDifficulty.expert  => 2.0,
+    GameDifficulty.expert => 2.0,
   };
 
   // ── Factory ────────────────────────────────────────────────────────────────
@@ -179,11 +185,14 @@ class GameState {
     final layout = buildBoardLayout();
 
     // Easy/Medium: replace king-corner slots with inner dumps (no kings in play).
-    if (difficulty == GameDifficulty.easy || difficulty == GameDifficulty.medium) {
-      for (final i in [0, 3, 12, 15]) layout[i] = SlotType.innerDump;
+    if (difficulty == GameDifficulty.easy ||
+        difficulty == GameDifficulty.medium) {
+      for (final i in [0, 3, 12, 15]) {
+        layout[i] = SlotType.innerDump;
+      }
     }
 
-    final cells   = List<CardModel?>.filled(16, null);
+    final cells = List<CardModel?>.filled(16, null);
     final blocked = List<bool>.filled(16, false);
     final effectiveSeed = seed ?? DateTime.now().millisecondsSinceEpoch;
     final rng = Random(effectiveSeed);
@@ -191,12 +200,15 @@ class GameState {
     final deck = <CardModel>[];
     for (final suit in Suit.values) {
       deck.add(CardModel(suit, const Ace()));
-      for (int v = 2; v <= 10; v++) deck.add(CardModel(suit, Num(v)));
+      for (int v = 2; v <= 10; v++) {
+        deck.add(CardModel(suit, Num(v)));
+      }
       deck.addAll([
         CardModel(suit, const Jack()),
         CardModel(suit, const Queen()),
         // Easy/Medium: omit kings entirely.
-        if (difficulty != GameDifficulty.easy && difficulty != GameDifficulty.medium)
+        if (difficulty != GameDifficulty.easy &&
+            difficulty != GameDifficulty.medium)
           CardModel(suit, const King()),
       ]);
     }
@@ -257,6 +269,7 @@ class GameState {
   ];
 
   bool get boardFull => cells.every((c) => c != null);
+  bool _isValidCellIndex(int index) => index >= 0 && index < cells.length;
   int get remainingInDeck => drawPile.length;
 
   int get cardsRemainingDisplay => drawPile.length + (current != null ? 1 : 0);
@@ -271,12 +284,21 @@ class GameState {
 
   int get royalsPlacedCorrect {
     int c = 0;
-    for (final i in _idxOf(SlotType.kingCorner))
-      if (cells[i]?.isK == true && !isBlocked[i]) c++;
-    for (final i in _idxOf(SlotType.queenEdge))
-      if (cells[i]?.isQ == true && !isBlocked[i]) c++;
-    for (final i in _idxOf(SlotType.jackEdge))
-      if (cells[i]?.isJ == true && !isBlocked[i]) c++;
+    for (final i in _idxOf(SlotType.kingCorner)) {
+      if (cells[i]?.isK == true && !isBlocked[i]) {
+        c++;
+      }
+    }
+    for (final i in _idxOf(SlotType.queenEdge)) {
+      if (cells[i]?.isQ == true && !isBlocked[i]) {
+        c++;
+      }
+    }
+    for (final i in _idxOf(SlotType.jackEdge)) {
+      if (cells[i]?.isJ == true && !isBlocked[i]) {
+        c++;
+      }
+    }
     return c;
   }
 
@@ -289,9 +311,13 @@ class GameState {
       final c = cells[i];
       if (c != null && c.isNumOrAce) vals.add(c.valueForSum);
     }
-    for (int a = 0; a < vals.length; a++)
-      for (int b = a + 1; b < vals.length; b++)
-        if (vals[a] + vals[b] == 11) return true;
+    for (int a = 0; a < vals.length; a++) {
+      for (int b = a + 1; b < vals.length; b++) {
+        if (vals[a] + vals[b] == 11) {
+          return true;
+        }
+      }
+    }
     return false;
   }
 
@@ -403,8 +429,12 @@ class GameState {
   }
 
   bool tryPlaceAt(int index, {bool godMode = false}) {
-    if (phase != Phase.fill || current == null || cells[index] != null)
+    if (!_isValidCellIndex(index) ||
+        phase != Phase.fill ||
+        current == null ||
+        cells[index] != null) {
       return false;
+    }
     final st = layout[index];
     final card = current!;
 
@@ -458,6 +488,7 @@ class GameState {
         selectedForClear.clear();
       } else {
         phase = Phase.gameOver;
+        endTime ??= DateTime.now();
       }
       return;
     }
@@ -469,8 +500,10 @@ class GameState {
   }
 
   void toggleSelectForClear(int index) {
-    final allowedInFill = phase == Phase.fill && difficulty == GameDifficulty.easy;
+    final allowedInFill =
+        phase == Phase.fill && difficulty == GameDifficulty.easy;
     if (phase != Phase.clear && !allowedInFill) return;
+    if (!_isValidCellIndex(index)) return;
     final c = cells[index];
     if (c == null || !c.isNumOrAce) return;
     if (!selectedForClear.add(index)) selectedForClear.remove(index);
@@ -511,7 +544,9 @@ class GameState {
         final cb = cells[b];
         if (cb == null || !cb.isNumOrAce) continue;
         if (ca.valueForSum + cb.valueForSum == 11) {
-          used..add(a)..add(b);
+          used
+            ..add(a)
+            ..add(b);
           result.add(([a, b], [ca, cb]));
           break;
         }
@@ -580,8 +615,9 @@ class GameState {
       (peekActiveNow && drawPile.isNotEmpty) ? drawPile.last : null;
 
   bool moveCard(int from, int to, {bool godMode = false}) {
-    if (!cells.asMap().containsKey(from) || !cells.asMap().containsKey(to))
+    if (!_isValidCellIndex(from) || !_isValidCellIndex(to)) {
       return false;
+    }
     if (cells[from] == null || cells[to] != null) return false;
     final c = cells[from]!;
     final stTo = layout[to];
@@ -623,9 +659,9 @@ class GameState {
     drawPile.clear();
     current = null;
 
-    const kings   = [Suit.spade, Suit.heart, Suit.diamond, Suit.club];
-    const queens  = [Suit.spade, Suit.heart, Suit.diamond, Suit.club];
-    const jacks   = [Suit.spade, Suit.heart, Suit.diamond, Suit.club];
+    const kings = [Suit.spade, Suit.heart, Suit.diamond, Suit.club];
+    const queens = [Suit.spade, Suit.heart, Suit.diamond, Suit.club];
+    const jacks = [Suit.spade, Suit.heart, Suit.diamond, Suit.club];
     int ki = 0, qi = 0, ji = 0;
     for (int i = 0; i < 16; i++) {
       switch (layout[i]) {

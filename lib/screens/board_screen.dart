@@ -161,6 +161,8 @@ class _BoardScreenState extends State<BoardScreen>
   bool _xpAwardedThisGame = false;
   // Prevents duplicate stats/goal updates when overlay rebuilds.
   bool _statsUpdatedThisGame = false;
+  // Makes terminal-state rewards, persistence, audio, and overlays idempotent.
+  bool _endStateHandled = false;
 
   // Optional-clearing setting
   static const String _optionalClearingPrefKey = 'royalFrameOptionalClearing';
@@ -214,6 +216,12 @@ class _BoardScreenState extends State<BoardScreen>
     }
 
     game.evaluateGameOverInFill();
+
+    if (game.phase == Phase.winner || game.phase == Phase.gameOver) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _checkEndState();
+      });
+    }
 
     if (widget.showNewGamePicker) {
       WidgetsBinding.instance.addPostFrameCallback(
@@ -325,6 +333,7 @@ class _BoardScreenState extends State<BoardScreen>
       _duelFinishedReported = false;
       _xpAwardedThisGame = false;
       _statsUpdatedThisGame = false;
+      _endStateHandled = false;
       _myFinalElapsedSeconds = 0;
       _myFinalRoyals = 0;
       _opponentScore = 0;
@@ -523,6 +532,7 @@ class _BoardScreenState extends State<BoardScreen>
     final prefs = await SharedPreferences.getInstance();
     final newValue = !_optionalClearing;
     await prefs.setBool(_optionalClearingPrefKey, newValue);
+    if (!mounted) return;
     setState(() => _optionalClearing = newValue);
   }
 
@@ -885,6 +895,7 @@ class _BoardScreenState extends State<BoardScreen>
       _errorHighlights.clear();
       _xpAwardedThisGame = false;
       _statsUpdatedThisGame = false;
+      _endStateHandled = false;
       _clearedAtLeastOnePairThisPhase = false;
     });
     // Clear any lingering tutorial state when starting a new game.
@@ -912,6 +923,8 @@ class _BoardScreenState extends State<BoardScreen>
 
   void _checkEndState() {
     if (game.phase == Phase.winner) {
+      if (_endStateHandled) return;
+      _endStateHandled = true;
       _inactivityTimer?.cancel();
       _hintAutoTimer?.cancel();
       _hintPulseCtrl.stop();
@@ -920,7 +933,8 @@ class _BoardScreenState extends State<BoardScreen>
         _hintCurrentCard = false;
         _activeHint = _HintType.none;
       });
-      DailyGoalService.addProgress(GoalType.finishMatch, 1);
+      _recordStatsOnce(isWin: true);
+      unawaited(DailyGoalService.addProgress(GoalType.finishMatch, 1));
       if (!_xpAwardedThisGame) {
         _xpAwardedThisGame = true;
         final xp = switch (_difficulty) {
@@ -929,7 +943,7 @@ class _BoardScreenState extends State<BoardScreen>
           GameDifficulty.classic => 500,
           GameDifficulty.expert  => 1000,
         };
-        XpService.addXP(xp);
+        unawaited(XpService.addXP(xp));
       }
       // Duel: report final score as winner
       if (_duelSession != null && !_duelFinishedReported) {
@@ -944,6 +958,8 @@ class _BoardScreenState extends State<BoardScreen>
       _confettiCtrl.play();
       _playWin();
     } else if (game.phase == Phase.gameOver) {
+      if (_endStateHandled) return;
+      _endStateHandled = true;
       _inactivityTimer?.cancel();
       _hintAutoTimer?.cancel();
       _hintPulseCtrl.stop();
@@ -952,7 +968,8 @@ class _BoardScreenState extends State<BoardScreen>
         _hintCurrentCard = false;
         _activeHint = _HintType.none;
       });
-      DailyGoalService.addProgress(GoalType.finishMatch, 1);
+      _recordStatsOnce(isWin: false);
+      unawaited(DailyGoalService.addProgress(GoalType.finishMatch, 1));
       if (!_xpAwardedThisGame) {
         _xpAwardedThisGame = true;
         final xp = switch (_difficulty) {
@@ -961,7 +978,7 @@ class _BoardScreenState extends State<BoardScreen>
           GameDifficulty.classic => 50,
           GameDifficulty.expert  => 100,
         };
-        XpService.addXP(xp);
+        unawaited(XpService.addXP(xp));
       }
       // Duel: report final score as loser
       if (_duelSession != null && !_duelFinishedReported) {
@@ -988,6 +1005,13 @@ class _BoardScreenState extends State<BoardScreen>
         game.phase != Phase.gameOver) {
       _syncDuelScore();
     }
+  }
+
+  void _recordStatsOnce({required bool isWin}) {
+    if (_statsUpdatedThisGame) return;
+    _statsUpdatedThisGame = true;
+    unawaited(DbService().updatePlayerStats(game.score, isWin));
+    unawaited(DailyGoalService.addProgress(GoalType.scorePoints, game.score));
   }
 
   // ── Sudden-death helpers ──────────────────────────────────────────────────
@@ -2849,18 +2873,9 @@ class _BoardScreenState extends State<BoardScreen>
   }
 
 
-  /// Hosts [WinnerOverlay]. Keeps the one-shot stats side effect with the
-  /// screen state and computes the score breakdown at end-state time; the
-  /// overlay itself is pure visual.
-  // TODO(defect-report): this write fires during build (guarded by
-  // _statsUpdatedThisGame). Pre-existing behavior, intentionally preserved.
+  /// Hosts [WinnerOverlay] and computes the score breakdown. Persistence is
+  /// handled by [_checkEndState], keeping this build method side-effect free.
   Widget _winnerOverlayHost() {
-    if (!_statsUpdatedThisGame) {
-      _statsUpdatedThisGame = true;
-      DbService().updatePlayerStats(game.score, true);
-      DailyGoalService.addProgress(GoalType.scorePoints, game.score);
-    }
-
     final int baseScore = game.score;
     const int winBonus = 1000;
     final int drawnWhenFilled =
@@ -2908,17 +2923,9 @@ class _BoardScreenState extends State<BoardScreen>
     ));
   }
 
-  /// Hosts [GameOverOverlay]. Keeps the one-shot stats side effect with the
-  /// screen state; the overlay itself is pure visual.
-  // TODO(defect-report): this write fires during build (guarded by
-  // _statsUpdatedThisGame). Pre-existing behavior, intentionally preserved —
-  // see the sprint's final defect report before changing.
+  /// Hosts the pure-visual [GameOverOverlay]. Persistence is handled when the
+  /// model first enters the terminal state, never during build.
   Widget _gameOverOverlayHost() {
-    if (!_statsUpdatedThisGame) {
-      _statsUpdatedThisGame = true;
-      DbService().updatePlayerStats(game.score, false);
-      DailyGoalService.addProgress(GoalType.scorePoints, game.score);
-    }
     return OverlayEntrance(
         child: GameOverOverlay(
       game: game,

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/player_model.dart';
+import '../utils/app_feedback.dart';
 import 'auth_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,7 +60,8 @@ class DbService {
           });
         }
       });
-    } catch (e) {
+    } catch (error, stack) {
+      logError('player.updateStats', error, stack);
     }
   }
 
@@ -71,10 +73,9 @@ class DbService {
     final sanitized = displayName.trim();
     if (sanitized.isEmpty || sanitized.length > 30) return;
     try {
-      await _db
-          .collection('players')
-          .doc(uid)
-          .update({'displayName': sanitized});
+      await _db.collection('players').doc(uid).update({
+        'displayName': sanitized,
+      });
     } catch (_) {
       // Document doesn't exist yet — no-op is intentional.
     }
@@ -85,7 +86,10 @@ class DbService {
   Future<void> ensurePlayerDoc(String uid, String displayName) async {
     final doc = await _db.collection('players').doc(uid).get();
     if (doc.exists) return;
-    await _db.collection('players').doc(uid).set(
+    await _db
+        .collection('players')
+        .doc(uid)
+        .set(
           PlayerModel(
             uid: uid,
             displayName: displayName,
@@ -193,11 +197,12 @@ class DbService {
     final user = _auth.currentUser;
     if (user == null) return;
     try {
-      await _db.collection('players').doc(user.uid).set(
-        {'streak': streak, 'streakLastDate': lastDate},
-        SetOptions(merge: true),
-      );
-    } catch (e) {
+      await _db.collection('players').doc(user.uid).set({
+        'streak': streak,
+        'streakLastDate': lastDate,
+      }, SetOptions(merge: true));
+    } catch (error, stack) {
+      logError('streak.save', error, stack);
     }
   }
 

@@ -9,7 +9,10 @@ import 'xp_service.dart';
 import 'badge_service.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  // Resolve lazily so constructing screens/services never touches Firebase
+  // before the bootstrap phase has completed.
+  FirebaseAuth get _auth => FirebaseAuth.instance;
+  static Future<void>? _googleInitialization;
 
   User? get currentUser => _auth.currentUser;
 
@@ -28,26 +31,50 @@ class AuthService {
   // ─── Google ────────────────────────────────────────────────────────────────
 
   Future<UserCredential?> signInWithGoogle() async {
-    try {
-      if (kIsWeb) {
+    if (kIsWeb) {
+      try {
         final googleProvider = GoogleAuthProvider()
           ..setCustomParameters({
             'client_id':
                 '961421919288-1oqcid53ipgtshukmvkp90cu2g1i21g2.apps.googleusercontent.com',
           });
         return await _auth.signInWithPopup(googleProvider);
-      } else {
-        await GoogleSignIn.instance.initialize();
-        final googleUser = await GoogleSignIn.instance.authenticate();
-
-        final googleAuth = googleUser.authentication;
-        final credential = GoogleAuthProvider.credential(
-          idToken: googleAuth.idToken,
-        );
-        return await _auth.signInWithCredential(credential);
+      } catch (_) {
+        return null;
       }
+    }
+
+    try {
+      await _ensureGoogleSignInInitialized();
+      final googleUser = await GoogleSignIn.instance.authenticate();
+
+      final googleAuth = googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        idToken: googleAuth.idToken,
+      );
+      return await _auth.signInWithCredential(credential);
+    } on GoogleSignInException catch (error) {
+      if (error.code == GoogleSignInExceptionCode.canceled ||
+          error.code == GoogleSignInExceptionCode.interrupted) {
+        return null;
+      }
+      rethrow;
+    }
+  }
+
+  /// google_sign_in requires initialization exactly once before every other
+  /// native operation. Cache concurrent calls, but allow a failed attempt to
+  /// be retried instead of permanently retaining a failed Future.
+  static Future<void> _ensureGoogleSignInInitialized() async {
+    final initialization = _googleInitialization ??= GoogleSignIn.instance
+        .initialize();
+    try {
+      await initialization;
     } catch (_) {
-      return null;
+      if (identical(_googleInitialization, initialization)) {
+        _googleInitialization = null;
+      }
+      rethrow;
     }
   }
 
@@ -157,6 +184,7 @@ class AuthService {
     try {
       await _auth.signOut();
       if (!kIsWeb) {
+        await _ensureGoogleSignInInitialized();
         await GoogleSignIn.instance.signOut();
       }
     } catch (_) {
@@ -171,7 +199,7 @@ class AuthService {
     // SharedPreferences: player name + tutorial flag
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('playerName');
-    await TutorialManager.reset();   // clears royalFrameTutorialV3Done
+    await TutorialManager.reset(); // clears royalFrameTutorialV3Done
 
     // SecureStorage: game progress
     await StreakService.reset();

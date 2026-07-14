@@ -19,6 +19,7 @@ const double _kButtonHeight = 52.0;
 const double _kButtonRadius = 10.0;
 const double _kIconSize = 22.0;
 const double _kLabelFontSize = 16.0;
+const int _kMaxPlayerNameLength = 30;
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
@@ -77,6 +78,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     showAppSnack(context, message);
   }
 
+  String _boundedPlayerName(String? value) {
+    final normalized = (value ?? '').trim();
+    final fallback = normalized.isEmpty ? 'Player' : normalized;
+    return fallback.characters.take(_kMaxPlayerNameLength).toString();
+  }
+
   // ─── Guest login ──────────────────────────────────────────────────────────
 
   void _startGame() async {
@@ -85,23 +92,39 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       _showError(_l.errEnterName);
       return;
     }
+    if (name.length > _kMaxPlayerNameLength) {
+      _showError(_l.errNameTooLong(_kMaxPlayerNameLength));
+      return;
+    }
 
     setState(() => _isLoading = true);
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('playerName', name);
-    final credential = await _authService.signInAnonymously(name);
+    try {
+      final credential = await _authService.signInAnonymously(name);
+      if (!mounted) return;
 
-    // Create the player document immediately so a guest who hasn't finished
-    // a game yet still has a valid backend record. This keeps the startup
-    // session validation from treating them as stale on the next launch.
-    final uid = credential?.user?.uid;
-    if (uid != null) {
+      final uid = credential?.user?.uid;
+      if (uid == null) {
+        setState(() => _isLoading = false);
+        _showError(_l.errGuestSignIn);
+        return;
+      }
+
+      // Create the backend record before persisting the local session marker.
+      // Otherwise startup validation correctly considers the session stale.
       await DbService().ensurePlayerDoc(uid, name);
-    }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('playerName', name);
+      if (!mounted) return;
 
-    setState(() => _isLoading = false);
-    _goToMainMenu();
+      setState(() => _isLoading = false);
+      _goToMainMenu();
+    } catch (error, stack) {
+      logError('auth.guestProfile', error, stack);
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showError(_l.errProfileSetup);
+    }
   }
 
   // ─── Google login ─────────────────────────────────────────────────────────
@@ -111,19 +134,30 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
     try {
       final userCred = await _authService.signInWithGoogle();
+      if (!mounted) return;
 
       if (userCred != null) {
-        final name = userCred.user?.displayName ?? 'Player';
+        final user = userCred.user;
+        if (user == null) {
+          setState(() => _isLoading = false);
+          _showError(_l.errProfileSetup);
+          return;
+        }
+        final name = _boundedPlayerName(user.displayName);
+        await DbService().ensurePlayerDoc(user.uid, name);
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('playerName', name);
+        if (!mounted) return;
         _goToMainMenu();
       } else {
         setState(() => _isLoading = false);
         _showInfo('Google Login cancelled by user.');
       }
-    } catch (e) {
+    } catch (error, stack) {
+      logError('auth.googleProfile', error, stack);
+      if (!mounted) return;
       setState(() => _isLoading = false);
-      _showError('DEBUG ERROR: $e');
+      _showError(_l.errProfileSetup);
     }
   }
 
@@ -131,6 +165,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   void _signInWithPhone() async {
     final phone = await _showPhoneInputDialog();
+    if (!mounted) return;
     if (phone == null || phone.isEmpty) return;
 
     setState(() => _isLoading = true);
@@ -145,6 +180,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   /// Web path: Firebase handles reCAPTCHA internally.
   Future<void> _handlePhoneWeb(String phoneNumber) async {
     final confirmationResult = await _authService.sendSmsCodeWeb(phoneNumber);
+    if (!mounted) return;
 
     setState(() => _isLoading = false);
 
@@ -156,6 +192,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     }
 
     final smsCode = await _showSmsCodeDialog();
+    if (!mounted) return;
     if (smsCode == null || smsCode.isEmpty) return;
 
     setState(() => _isLoading = true);
@@ -165,13 +202,16 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         confirmationResult,
         smsCode,
       );
+      if (!mounted) return;
       if (userCred != null) {
         await _savePhonePlayerAndNavigate(userCred);
       }
     } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
       _showError(e.message ?? 'Invalid verification code.');
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
       _showError('Verification failed: $e');
     }
@@ -185,18 +225,22 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     await _authService.sendSmsCodeNative(
       phoneNumber: phoneNumber,
       onCodeSent: (id, _) {
+        if (!mounted) return;
         verificationId = id;
       },
       onAutoVerified: (userCred) async {
+        if (!mounted) return;
         autoVerified = true;
         await _savePhonePlayerAndNavigate(userCred);
       },
       onError: (error) {
+        if (!mounted) return;
         setState(() => _isLoading = false);
         _showError(error);
       },
     );
 
+    if (!mounted) return;
     if (autoVerified) return;
 
     setState(() => _isLoading = false);
@@ -204,6 +248,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     if (verificationId == null) return;
 
     final smsCode = await _showSmsCodeDialog();
+    if (!mounted) return;
     if (smsCode == null || smsCode.isEmpty) return;
 
     setState(() => _isLoading = true);
@@ -213,6 +258,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         verificationId: verificationId!,
         smsCode: smsCode,
       );
+      if (!mounted) return;
       if (userCred != null) {
         await _savePhonePlayerAndNavigate(userCred);
       } else {
@@ -220,9 +266,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         _showError('Verification failed. Please try again.');
       }
     } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
       _showError(e.message ?? 'Invalid verification code.');
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
       _showError('Verification failed: $e');
     }
@@ -235,38 +283,50 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   /// mandatory name-picker dialog before proceeding to the main menu.
   Future<void> _savePhonePlayerAndNavigate(UserCredential userCred) async {
     final user = userCred.user;
-    final existingName = user?.displayName ?? '';
+    if (user == null) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showError(_l.errProfileSetup);
+      }
+      return;
+    }
+    try {
+      final rawExistingName = user.displayName?.trim() ?? '';
+      final needsName =
+          rawExistingName.isEmpty ||
+          rawExistingName.toLowerCase() == 'player';
 
-    final needsName =
-        existingName.isEmpty ||
-        existingName.toLowerCase() == 'player';
+      late final String finalName;
+      if (needsName) {
+        setState(() => _isLoading = false);
 
-    if (needsName) {
-      setState(() => _isLoading = false);
+        final chosenName = await _showPlayerNameDialog();
+        if (!mounted) return;
 
-      final chosenName = await _showPlayerNameDialog();
-      if (!mounted) return;
+        // User dismissed the dialog without providing a name — abort login.
+        if (chosenName == null || chosenName.trim().isEmpty) return;
 
-      // User dismissed the dialog without providing a name — abort login.
-      if (chosenName == null || chosenName.trim().isEmpty) return;
-
-      setState(() => _isLoading = true);
-
-      // Persist the name in Firebase Auth + Firestore.
-      await user?.updateDisplayName(chosenName.trim());
-      if (user != null) {
-        await DbService().updateDisplayName(user.uid, chosenName.trim());
+        setState(() => _isLoading = true);
+        finalName = chosenName.trim();
+        await user.updateDisplayName(finalName);
+      } else {
+        finalName = _boundedPlayerName(rawExistingName);
       }
 
+      await DbService().ensurePlayerDoc(user.uid, finalName);
+      await DbService().updateDisplayName(user.uid, finalName);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('playerName', chosenName.trim());
-    } else {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('playerName', existingName);
-    }
+      await prefs.setString('playerName', finalName);
 
-    setState(() => _isLoading = false);
-    _goToMainMenu();
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _goToMainMenu();
+    } catch (error, stack) {
+      logError('auth.phoneProfile', error, stack);
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showError(_l.errProfileSetup);
+    }
   }
 
   // ─── Dialogs ──────────────────────────────────────────────────────────────
@@ -431,6 +491,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                     width: _kButtonWidth,
                     child: TextField(
                       controller: _nameCtrl,
+                      inputFormatters: [
+                        LengthLimitingTextInputFormatter(
+                          _kMaxPlayerNameLength,
+                        ),
+                      ],
                       style: const TextStyle(color: kGoldLight, fontSize: 17),
                       textAlign: TextAlign.center,
                       decoration: InputDecoration(
