@@ -62,9 +62,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   void _goToMainMenu() {
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      appRoute(const MainMenuScreen()),
-    );
+    Navigator.of(context).pushReplacement(appRoute(const MainMenuScreen()));
   }
 
   void _showError(String message) {
@@ -238,8 +236,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     final existingName = user?.displayName ?? '';
 
     final needsName =
-        existingName.isEmpty ||
-        existingName.toLowerCase() == 'player';
+        existingName.isEmpty || existingName.toLowerCase() == 'player';
 
     if (needsName) {
       setState(() => _isLoading = false);
@@ -356,21 +353,14 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final topInset = MediaQuery.of(context).padding.top;
     return Scaffold(
       backgroundColor: kBurgundy,
       body: Stack(
         children: [
           // ── Subtle radial glow decoration ──────────────────────────────────
-          Positioned(
-            top: -80,
-            left: -60,
-            child: _glowCircle(340),
-          ),
-          Positioned(
-            bottom: -100,
-            right: -80,
-            child: _glowCircle(380),
-          ),
+          Positioned(top: -80, left: -60, child: _glowCircle(340)),
+          Positioned(bottom: -100, right: -80, child: _glowCircle(380)),
 
           Center(
             child: SingleChildScrollView(
@@ -460,11 +450,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             ),
           ),
           // Prominent language toggle pinned to top-right
-          Positioned(
-            top: 48,
-            right: 16,
-            child: _buildLangToggle(),
-          ),
+          Positioned(top: topInset + 8, right: 16, child: _buildLangToggle()),
         ],
       ),
     );
@@ -490,9 +476,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         backgroundColor: Colors.black.withValues(alpha: 0.35),
         foregroundColor: kGold,
         side: const BorderSide(color: kGold, width: 1.5),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       ),
       onPressed: _toggleLang,
@@ -611,7 +595,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       child: Row(
         children: [
           Expanded(
-            child: Divider(color: kGoldDark.withValues(alpha: 0.45), thickness: 1),
+            child: Divider(
+              color: kGoldDark.withValues(alpha: 0.45),
+              thickness: 1,
+            ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -626,7 +613,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             ),
           ),
           Expanded(
-            child: Divider(color: kGoldDark.withValues(alpha: 0.45), thickness: 1),
+            child: Divider(
+              color: kGoldDark.withValues(alpha: 0.45),
+              thickness: 1,
+            ),
           ),
         ],
       ),
@@ -752,7 +742,9 @@ class _RoyalDialog extends StatelessWidget {
                     child: OutlinedButton(
                       style: OutlinedButton.styleFrom(
                         foregroundColor: kGoldDark,
-                        side: BorderSide(color: kGoldDark.withValues(alpha: 0.5)),
+                        side: BorderSide(
+                          color: kGoldDark.withValues(alpha: 0.5),
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),

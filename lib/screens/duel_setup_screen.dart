@@ -56,17 +56,23 @@ class _DuelSetupScreenState extends State<DuelSetupScreen>
           labelColor: kGold,
           unselectedLabelColor: kGoldDark,
           tabs: [
-            Tab(icon: const Icon(Icons.add_circle_outline), text: isHe ? 'מארח' : 'Host'),
-            Tab(icon: const Icon(Icons.login),              text: isHe ? 'הצטרף' : 'Join'),
+            Tab(
+              icon: const Icon(Icons.add_circle_outline),
+              text: isHe ? 'מארח' : 'Host',
+            ),
+            Tab(icon: const Icon(Icons.login), text: isHe ? 'הצטרף' : 'Join'),
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabCtrl,
-        children: [
-          _HostTab(lang: widget.lang),
-          _JoinTab(lang: widget.lang),
-        ],
+      body: SafeArea(
+        top: false,
+        child: TabBarView(
+          controller: _tabCtrl,
+          children: [
+            _HostTab(lang: widget.lang),
+            _JoinTab(lang: widget.lang),
+          ],
+        ),
       ),
     );
   }
@@ -164,7 +170,11 @@ class _HostTabState extends State<_HostTab> {
                   ? 'צור דו-קרב ושתף את הקוד. שני השחקנים מתחילים עם אותה חפיסה.'
                   : 'Create a duel and share your code. Both players start with the same deck.',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.5),
+              style: const TextStyle(
+                color: Colors.white60,
+                fontSize: 13,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 32),
 
@@ -174,7 +184,10 @@ class _HostTabState extends State<_HostTab> {
                   padding: const EdgeInsets.only(bottom: 16),
                   child: Text(
                     _error!,
-                    style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                    style: const TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: 13,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -193,17 +206,24 @@ class _HostTabState extends State<_HostTab> {
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(
-                            color: kGold, strokeWidth: 2),
+                            color: kGold,
+                            strokeWidth: 2,
+                          ),
                         )
                       : const Icon(Icons.add),
-                  label: Text(_creating
-                      ? (_isHe ? 'יוצר...' : 'Creating...')
-                      : (_isHe ? 'צור דו-קרב' : 'Create Duel')),
+                  label: Text(
+                    _creating
+                        ? (_isHe ? 'יוצר...' : 'Creating...')
+                        : (_isHe ? 'צור דו-קרב' : 'Create Duel'),
+                  ),
                 ),
               ),
             ] else ...[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 20,
+                ),
                 decoration: BoxDecoration(
                   color: kBurgundyLight,
                   borderRadius: BorderRadius.circular(16),
@@ -242,12 +262,12 @@ class _HostTabState extends State<_HostTab> {
                         side: const BorderSide(color: kGoldDark),
                       ),
                       onPressed: () {
-                        Clipboard.setData(
-                          ClipboardData(text: _session!.code),
-                        );
+                        Clipboard.setData(ClipboardData(text: _session!.code));
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(_isHe ? 'הקוד הועתק!' : 'Code copied!'),
+                            content: Text(
+                              _isHe ? 'הקוד הועתק!' : 'Code copied!',
+                            ),
                             duration: const Duration(seconds: 2),
                           ),
                         );
@@ -315,9 +335,11 @@ class _JoinTabState extends State<_JoinTab> {
   Future<void> _joinDuel() async {
     final code = _ctrl.text.trim().toUpperCase();
     if (code.length < 6) {
-      setState(() => _error = _isHe
-          ? 'אנא הזן קוד בן 6 תווים.'
-          : 'Please enter a 6-character code.');
+      setState(
+        () => _error = _isHe
+            ? 'אנא הזן קוד בן 6 תווים.'
+            : 'Please enter a 6-character code.',
+      );
       return;
     }
     setState(() {
@@ -370,16 +392,18 @@ class _JoinTabState extends State<_JoinTab> {
                   ? 'הזן את קוד 6 התווים ששיתף איתך היריב.'
                   : 'Enter the 6-character code your opponent shared with you.',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.5),
+              style: const TextStyle(
+                color: Colors.white60,
+                fontSize: 13,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 32),
 
             TextField(
               controller: _ctrl,
               textCapitalization: TextCapitalization.characters,
-              inputFormatters: [
-                UpperCaseTextFormatter(),
-              ],
+              inputFormatters: [UpperCaseTextFormatter()],
               maxLength: 6,
               textAlign: TextAlign.center,
               onChanged: (value) {
@@ -420,8 +444,7 @@ class _JoinTabState extends State<_JoinTab> {
                 padding: const EdgeInsets.only(top: 12),
                 child: Text(
                   _error!,
-                  style: const TextStyle(
-                      color: Colors.redAccent, fontSize: 13),
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 13),
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -442,12 +465,16 @@ class _JoinTabState extends State<_JoinTab> {
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
-                            color: kGold, strokeWidth: 2),
+                          color: kGold,
+                          strokeWidth: 2,
+                        ),
                       )
                     : const Icon(Icons.play_arrow),
-                label: Text(_joining
-                    ? (_isHe ? 'מצטרף...' : 'Joining...')
-                    : (_isHe ? 'הצטרף' : 'Join Duel')),
+                label: Text(
+                  _joining
+                      ? (_isHe ? 'מצטרף...' : 'Joining...')
+                      : (_isHe ? 'הצטרף' : 'Join Duel'),
+                ),
               ),
             ),
           ],
@@ -460,7 +487,9 @@ class _JoinTabState extends State<_JoinTab> {
 class UpperCaseTextFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue, TextEditingValue newValue) {
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     return newValue.copyWith(text: newValue.text.toUpperCase());
   }
 }

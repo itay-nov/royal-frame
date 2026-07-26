@@ -25,6 +25,8 @@ class AppInitializer {
   // ── App Check ──────────────────────────────────────────────────────────────
 
   static Future<void> _activateAppCheck() async {
+    if (kIsWeb && kDebugMode) return;
+
     await FirebaseAppCheck.instance.activate(
       // Android/iOS: Play Integrity / App Attest in release; debug provider in debug.
       providerAndroid: kReleaseMode ? AndroidPlayIntegrityProvider() : AndroidDebugProvider(),

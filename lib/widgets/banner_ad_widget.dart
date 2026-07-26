@@ -15,7 +15,8 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
   bool _isLoaded = false;
 
   // Official Google test banner ad unit ID for Android.
-  static const String _testAdUnitId = 'ca-app-pub-3212738706492790/6113697116';
+  static const String _testAdUnitId =
+      'ca-app-pub-3940256099942544/6300978111';
   static const String _realAdUnitId = 'ca-app-pub-3688029896617428/7036778688';
 
   @override
@@ -42,6 +43,7 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
         onAdFailedToLoad: (ad, error) {
           ad.dispose();
           _ad = null;
+          debugPrint('[BannerAd] Failed to load: $error');
         },
       ),
     )..load();
@@ -67,5 +69,8 @@ class _BannerAdWidgetState extends State<BannerAdWidget> {
 /// Returns [BannerAdWidget] on Android, or [SizedBox.shrink] on other platforms.
 Widget buildBannerAd() {
   if (kIsWeb || !Platform.isAndroid) return const SizedBox.shrink();
-  return const BannerAdWidget();
+  return const SafeArea(
+    top: false,
+    child: BannerAdWidget(),
+  );
 }
