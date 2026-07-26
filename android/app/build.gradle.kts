@@ -44,12 +44,12 @@ android {
     defaultConfig {
         applicationId = "com.itay.royalframegame"
         minSdk = flutter.minSdkVersion
-        targetSdk = 35
+        targetSdk = 36
         // versionCode and versionName are injected by the Flutter Gradle plugin
-        // from pubspec.yaml (version: 1.0.3+4 → versionName=1.0.3, versionCode=4).
+        // from pubspec.yaml (version: 1.1.1+10 → versionName=1.1.1, versionCode=10).
         // Do NOT hardcode them here.
-	versionCode = flutter.versionCode
-	versionName = flutter.versionName
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
 
     buildTypes {
