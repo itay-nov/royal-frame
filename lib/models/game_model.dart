@@ -295,10 +295,14 @@ class GameState {
     return false;
   }
 
+  bool get isRoyalFrameComplete => royalsPlacedCorrect == totalRoyalSlots;
+
+  /// Whether normal play has ended in a completed-frame win.
+  ///
+  /// [isRoyalFrameComplete] can become true earlier; the winner phase is not
+  /// entered until no legal continuation remains.
   bool get isWinConditionMet =>
-      royalsPlacedCorrect == totalRoyalSlots &&
-      deckExhausted &&
-      !hasAnyPairFor11;
+      phase == Phase.winner && isRoyalFrameComplete;
 
   bool get frameFull =>
       _idxOf(SlotType.kingCorner).every((i) => cells[i] != null) &&
@@ -331,56 +335,34 @@ class GameState {
     return _cardHasLegalPlacement(current!);
   }
 
-  void _evaluatePhaseAfterChange() {
-    if (isWinConditionMet) {
-      phase = Phase.winner;
-      endTime ??= DateTime.now();
-      return;
-    }
+  void _finishWhenNoLegalActionRemains() {
+    phase = isRoyalFrameComplete ? Phase.winner : Phase.gameOver;
+    endTime ??= DateTime.now();
+  }
 
+  void _evaluatePhaseAfterChange() {
     if (phase == Phase.fill && current != null) {
       if (_cardHasLegalPlacement(current!)) return;
-      // Frame is full — victory takes priority over a blocked card.
-      if (royalsPlacedCorrect == totalRoyalSlots) {
-        phase = Phase.winner;
-        endTime ??= DateTime.now();
-        return;
-      }
-      phase = Phase.gameOver;
-      endTime ??= DateTime.now();
+      _finishWhenNoLegalActionRemains();
       return;
     }
 
     if (phase == Phase.fill && current == null) {
-      if (royalsPlacedCorrect == totalRoyalSlots && !hasAnyPairFor11) {
-        phase = Phase.winner;
-        endTime ??= DateTime.now();
-        return;
-      }
       if (hasAnyPairFor11) {
         phase = Phase.clear;
         selectedForClear.clear();
       } else {
-        phase = Phase.gameOver;
-        endTime ??= DateTime.now();
+        _finishWhenNoLegalActionRemains();
       }
       return;
     }
 
     if (phase == Phase.clear) {
-      if (isWinConditionMet) {
-        phase = Phase.winner;
-        endTime ??= DateTime.now();
-        return;
-      }
       if (hasAnyPairFor11) return;
 
       if (cells.any((c) => c == null)) {
         if (current == null && drawPile.isEmpty) {
-          phase = royalsPlacedCorrect == totalRoyalSlots
-              ? Phase.winner
-              : Phase.gameOver;
-          endTime ??= DateTime.now();
+          _finishWhenNoLegalActionRemains();
           return;
         }
         phase = Phase.fill;
@@ -392,8 +374,7 @@ class GameState {
         return;
       }
 
-      phase = Phase.gameOver;
-      endTime ??= DateTime.now();
+      _finishWhenNoLegalActionRemains();
       return;
     }
   }
@@ -453,12 +434,7 @@ class GameState {
 
     if (boardFull && drawPile.isNotEmpty) {
       current = null;
-      if (hasAnyPairFor11) {
-        phase = Phase.clear;
-        selectedForClear.clear();
-      } else {
-        phase = Phase.gameOver;
-      }
+      _evaluatePhaseAfterChange();
       return;
     }
 
