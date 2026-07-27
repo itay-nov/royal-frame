@@ -125,6 +125,9 @@ class L {
   String get btnContinuePhone =>
       isHe ? 'המשך עם טלפון' : 'Continue with Phone';
   String get errEnterName => isHe ? 'נא להזין שם' : 'Please enter a name';
+  String get updateRequiredMessage =>
+      isHe ? 'עדכן את המשחק כדי להמשיך.' : 'Update the game to continue.';
+  String get btnUpdate => isHe ? 'עדכון' : 'Update';
 
   String get rulesTitle => isHe ? 'חוקים' : 'Rules';
   String get rulesBody => isHe
