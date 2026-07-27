@@ -135,12 +135,14 @@ class L {
             'קלפי מספרים אפשר לשים בכל מקום פנוי. '
             'כשהלוח מתמלא, יש למצוא ולפנות זוגות של קלפי מספרים שסכומם 11. '
             'חובה לפנות את כל הקלפים האפשריים לפני שחוזרים להניח שוב! '
-            'הניצחון מוכרז רק כשהמסגרת מלאה במלוכה, החפיסה נגמרה, ואין זוגות 11 לפנות. '
+            'הניצחון מוכרז כשהמסגרת מלאה במלוכה ולא נותר מהלך חוקי. '
+            'אם יש זוגות 11 לפנות, ממשיכים לפנות אותם לפני סיום המשחק. '
             'המטרה: למלא את כל 12 משבצות המסגרת בקלפי מלוכה. תהנו!'
       : 'King, Queen, Jack must go in the outer frame. '
             'Match pairs of numbers that sum to 11 to clear space. '
             'You must clear all possible pairs before you can proceed to place cards again! '
-            'Win is declared only when the frame holds 12 royals, the deck is empty, and no 11-pairs remain. '
+            'Win is declared when the frame holds 12 royals and no legal action remains. '
+            'If any 11-pairs remain, clear them before the game can end. '
             'Fill the frame to win. Enjoy!';
   String get btnReplayTutorial => isHe ? 'מדריך אינטראקטיבי' : 'Interactive Tutorial';
   // Main Menu & Leaderboard Strings
