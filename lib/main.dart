@@ -9,8 +9,11 @@ import 'firebase_options.dart';
 
 import 'theme_constants.dart';
 import 'services/app_initializer.dart';
+import 'services/update_service.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/main_menu_screen.dart';
+import 'screens/update_required_screen.dart';
+import 'utils/localization.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,24 +34,46 @@ void main() async {
     );
   }
 
-  // App Check activation + stale guest-session validation.
-  final String? initialName = await AppInitializer.initialize();
+  // App Check/session validation and the Android minimum-build check are
+  // independent.
+  final startupResults = await Future.wait<Object?>([
+    AppInitializer.initialize(),
+    UpdateService.isUpdateRequired(),
+    L.loadLang(),
+  ]);
 
-  runApp(RoyalFrameApp(initialName: initialName));
+  runApp(
+    RoyalFrameApp(
+      initialName: startupResults[0] as String?,
+      updateRequired: startupResults[1] as bool,
+      initialLang: startupResults[2] as AppLang,
+    ),
+  );
 }
 
 class RoyalFrameApp extends StatefulWidget {
   final String? initialName;
-  const RoyalFrameApp({super.key, this.initialName});
+  final bool updateRequired;
+  final AppLang initialLang;
+
+  const RoyalFrameApp({
+    super.key,
+    this.initialName,
+    this.updateRequired = false,
+    this.initialLang = AppLang.en,
+  });
 
   @override
   State<RoyalFrameApp> createState() => _RoyalFrameAppState();
 }
 
 class _RoyalFrameAppState extends State<RoyalFrameApp> {
+  late bool _updateRequired;
+
   @override
   void initState() {
     super.initState();
+    _updateRequired = widget.updateRequired;
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -117,7 +142,14 @@ class _RoyalFrameAppState extends State<RoyalFrameApp> {
           ),
         ),
       ),
-      home: widget.initialName == null
+      home: _updateRequired
+          ? UpdateRequiredScreen(
+              lang: widget.initialLang,
+              onUpdateSatisfied: () {
+                if (mounted) setState(() => _updateRequired = false);
+              },
+            )
+          : widget.initialName == null
           ? const WelcomeScreen()
           : const MainMenuScreen(),
     );

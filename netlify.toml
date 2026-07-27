@@ -3,7 +3,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 [build]
-  command   = "flutter build web --release --dart-define=FLUTTER_WEB_USE_SKIA=true"
+  command   = "flutter build web --release --dart-define=FLUTTER_WEB_USE_SKIA=true && dart run tool/add_minimum_supported_build.dart --minimum $MINIMUM_SUPPORTED_ANDROID_BUILD"
   publish   = "build/web"
 
 # ─────────────────────────────────────────────────────────────────────────────
