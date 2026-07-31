@@ -129,6 +129,19 @@ class L {
       isHe ? 'עדכן את המשחק כדי להמשיך.' : 'Update the game to continue.';
   String get btnUpdate => isHe ? 'עדכון' : 'Update';
 
+  String get ratingInvitationTitle =>
+      isHe ? 'נהנים מ-Royal Frame?' : 'Enjoying Royal Frame?';
+  String get ratingInvitationBody => isHe
+      ? 'אפשר לדרג את משחק ה-Android של Royal Frame ב-Google Play.'
+      : 'You can rate the Royal Frame Android game on Google Play.';
+  String get ratingInvitationAction => isHe
+      ? 'דירוג משחק ה-Android ב-Google Play'
+      : 'Rate the Android game on Google Play';
+  String get ratingInvitationDismiss => isHe ? 'לא עכשיו' : 'Not now';
+  String get ratingInvitationSemanticLabel => isHe
+      ? 'הזמנה לדירוג משחק ה-Android של Royal Frame ב-Google Play'
+      : 'Invitation to rate the Royal Frame Android game on Google Play';
+
   String get rulesTitle => isHe ? 'חוקים' : 'Rules';
   String get rulesBody => isHe
       ? 'קלפי מלוכה (מלך, מלכה, נסיך) חובה למקם במסגרת החיצונית בלבד. '

@@ -70,3 +70,9 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Official Google Play In-App Review API. Platform use is isolated behind
+    // the Android MethodChannel in MainActivity.
+    implementation("com.google.android.play:review:2.0.2")
+}

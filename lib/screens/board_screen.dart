@@ -34,6 +34,9 @@ import '../widgets/board/flying_clear_card.dart';
 import '../widgets/board/game_over_overlay.dart';
 import '../widgets/board/winner_overlay.dart';
 import '../widgets/overlay_entrance.dart';
+import '../widgets/rating_invitation_overlay.dart';
+import '../widgets/rating_invitation_scope.dart';
+import '../services/rating_invitation_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TUTORIAL HINT TYPES
@@ -58,6 +61,8 @@ class BoardScreen extends StatefulWidget {
   final DuelSession? duelSession;
   final bool isHost;
   final AppLang? initialLang;
+  final RatingInvitationCoordinator? ratingInvitationCoordinator;
+  final RatingGameplaySession? ratingGameplaySession;
 
   const BoardScreen({
     super.key,
@@ -67,6 +72,8 @@ class BoardScreen extends StatefulWidget {
     this.duelSession,
     this.isHost = false,
     this.initialLang,
+    this.ratingInvitationCoordinator,
+    this.ratingGameplaySession,
   });
 
   @override
@@ -161,6 +168,14 @@ class _BoardScreenState extends State<BoardScreen>
   bool _xpAwardedThisGame = false;
   // Prevents duplicate stats/goal updates when overlay rebuilds.
   bool _statsUpdatedThisGame = false;
+  // Review eligibility observes only a legitimate, deduplicated winner
+  // transition. A duel abandonment is explicitly excluded.
+  bool _ratingVictoryRecordedThisGame = false;
+  bool _ratingVictoryDisqualified = false;
+  bool _ratingDispatchInProgress = false;
+  bool _showRatingInvitation = false;
+  RatingInvitationCoordinator? _ratingInvitationCoordinator;
+  late final RatingGameplaySession _ratingGameplaySession;
 
   // Optional-clearing setting
   static const String _optionalClearingPrefKey = 'royalFrameOptionalClearing';
@@ -191,6 +206,8 @@ class _BoardScreenState extends State<BoardScreen>
   @override
   void initState() {
     super.initState();
+    _ratingGameplaySession =
+        widget.ratingGameplaySession ?? RatingGameplaySession();
     _lang = widget.initialLang ?? AppLang.en;
     WidgetsBinding.instance.addObserver(this);
     _cellKeys = List.generate(16, (_) => GlobalKey());
@@ -233,6 +250,40 @@ class _BoardScreenState extends State<BoardScreen>
     XpService.load().catchError((e) => logError('xp.load', e));
     BadgeService.load().catchError((e) => logError('badge.load', e));
     _initDuelMode();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_ratingInvitationCoordinator != null) return;
+    _ratingInvitationCoordinator =
+        widget.ratingInvitationCoordinator ??
+        RatingInvitationScope.maybeOf(context);
+    if (!widget.showNewGamePicker) {
+      _beginRatingGameplaySession();
+    }
+  }
+
+  void _beginRatingGameplaySession({bool startNew = false}) {
+    final sessionIdentifier = startNew
+        ? _ratingGameplaySession.startNew()
+        : _ratingGameplaySession.startIfNeeded();
+    _ratingInvitationCoordinator
+        ?.beginGameplaySession(sessionToken: sessionIdentifier)
+        .then((started) {
+          if (started && mounted) {
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) {
+                if (identical(
+                  _ratingGameplaySession.identifier,
+                  sessionIdentifier,
+                )) {
+                  _maybeDispatchRatingInvitation();
+                }
+              },
+            );
+          }
+        });
   }
 
   // ── Duel mode ──────────────────────────────────────────────────────────────
@@ -290,7 +341,9 @@ class _BoardScreenState extends State<BoardScreen>
         );
         await Future.delayed(const Duration(seconds: 2));
         if (!mounted) return;
-        // Treat the remaining player as winner
+        // Treat the remaining player as winner for duel UI, but never as a
+        // legitimate completed-frame victory for rating eligibility.
+        _ratingVictoryDisqualified = true;
         game.phase = Phase.winner;
         game.endTime ??= DateTime.now();
         setState(() => _duelSession = null);
@@ -325,6 +378,8 @@ class _BoardScreenState extends State<BoardScreen>
       _duelFinishedReported = false;
       _xpAwardedThisGame = false;
       _statsUpdatedThisGame = false;
+      _ratingVictoryRecordedThisGame = false;
+      _ratingVictoryDisqualified = false;
       _myFinalElapsedSeconds = 0;
       _myFinalRoyals = 0;
       _opponentScore = 0;
@@ -334,6 +389,7 @@ class _BoardScreenState extends State<BoardScreen>
       game = GameState.newGame(seed: newSeed);
       game.evaluateGameOverInFill();
     });
+    _beginRatingGameplaySession(startNew: true);
   }
 
   Future<void> _syncDuelScore() async {
@@ -702,6 +758,7 @@ class _BoardScreenState extends State<BoardScreen>
 
   @override
   void dispose() {
+    _ratingInvitationCoordinator?.discardPendingInvitation();
     WidgetsBinding.instance.removeObserver(this);
     _uiTimer?.cancel();
     _inactivityTimer?.cancel();
@@ -842,7 +899,7 @@ class _BoardScreenState extends State<BoardScreen>
   // Shows the difficulty picker. On selection, calls _executeNewGame.
   // Used by: AppBar refresh icon, "New Game" in main menu, difficulty menu item.
   void _openDifficultyPicker() {
-    showDialog(
+    showDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (_) => DifficultyPickerDialog(
@@ -853,7 +910,13 @@ class _BoardScreenState extends State<BoardScreen>
           _executeNewGame(diff);
         },
       ),
-    );
+    ).whenComplete(() {
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _maybeDispatchRatingInvitation(),
+        );
+      }
+    });
   }
 
   // Immediately restarts with the already-selected difficulty — no dialog.
@@ -885,6 +948,8 @@ class _BoardScreenState extends State<BoardScreen>
       _errorHighlights.clear();
       _xpAwardedThisGame = false;
       _statsUpdatedThisGame = false;
+      _ratingVictoryRecordedThisGame = false;
+      _ratingVictoryDisqualified = false;
       _clearedAtLeastOnePairThisPhase = false;
     });
     // Clear any lingering tutorial state when starting a new game.
@@ -906,12 +971,14 @@ class _BoardScreenState extends State<BoardScreen>
       _hintedPair.clear();
       setState(() => _showWelcomeModals = true);
     }
+    _beginRatingGameplaySession(startNew: true);
   }
 
   // ── End-state ──────────────────────────────────────────────────────────────
 
   void _checkEndState() {
     if (game.phase == Phase.winner) {
+      _recordCompletedFrameVictoryForRating();
       _inactivityTimer?.cancel();
       _hintAutoTimer?.cancel();
       _hintPulseCtrl.stop();
@@ -988,6 +1055,96 @@ class _BoardScreenState extends State<BoardScreen>
         game.phase != Phase.gameOver) {
       _syncDuelScore();
     }
+  }
+
+  void _recordCompletedFrameVictoryForRating() {
+    if (_ratingVictoryRecordedThisGame || _ratingVictoryDisqualified) return;
+    final coordinator = _ratingInvitationCoordinator;
+    final sessionIdentifier = _ratingGameplaySession.identifier;
+    if (coordinator == null || sessionIdentifier == null) return;
+    _ratingVictoryRecordedThisGame = true;
+    coordinator
+        .recordCompletedFrameVictory(sessionToken: sessionIdentifier)
+        .then((eligible) {
+          if (eligible && mounted) {
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => _maybeDispatchRatingInvitation(),
+            );
+          }
+        });
+  }
+
+  bool get _gameplayUnblockedForRating {
+    return mounted &&
+        game.phase != Phase.winner &&
+        game.phase != Phase.gameOver &&
+        !_showGameOverOverlay &&
+        !_showDuelResult &&
+        !_showWelcomeModals &&
+        !_showPhasePulse &&
+        !_isAnimatingClear &&
+        ModalRoute.of(context)?.isCurrent == true;
+  }
+
+  Future<void> _maybeDispatchRatingInvitation() async {
+    final coordinator = _ratingInvitationCoordinator;
+    if (coordinator == null ||
+        _ratingDispatchInProgress ||
+        _showRatingInvitation) {
+      return;
+    }
+    _ratingDispatchInProgress = true;
+    final dispatch = await coordinator.dispatchPendingInvitation(
+      gameplayUnblocked: _gameplayUnblockedForRating,
+    );
+    if (!mounted) return;
+    _ratingDispatchInProgress = false;
+    if (dispatch == RatingInvitationDispatch.webReadyToPresent &&
+        _gameplayUnblockedForRating) {
+      setState(() => _showRatingInvitation = true);
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _confirmRatingInvitationPresented(),
+      );
+    } else if (dispatch == RatingInvitationDispatch.webReadyToPresent) {
+      coordinator.cancelWebInvitationPresentation();
+    }
+  }
+
+  Future<void> _confirmRatingInvitationPresented() async {
+    final coordinator = _ratingInvitationCoordinator;
+    if (coordinator == null ||
+        !mounted ||
+        !_showRatingInvitation ||
+        !_gameplayUnblockedForRating) {
+      coordinator?.cancelWebInvitationPresentation();
+      if (mounted && _showRatingInvitation) {
+        setState(() => _showRatingInvitation = false);
+      }
+      return;
+    }
+
+    final confirmed = await coordinator.confirmWebInvitationPresented();
+    if (!mounted || confirmed) return;
+    setState(() => _showRatingInvitation = false);
+  }
+
+  void _dismissRatingInvitation() {
+    _ratingInvitationCoordinator?.dismissWebInvitation();
+    if (mounted) setState(() => _showRatingInvitation = false);
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  void _launchRatingDestination() {
+    final coordinator = _ratingInvitationCoordinator;
+    if (coordinator == null) {
+      _dismissRatingInvitation();
+      return;
+    }
+    // The adapter launch begins synchronously inside this call, preserving the
+    // direct tap gesture required by mobile Safari.
+    coordinator.launchWebPlayStore();
+    if (mounted) setState(() => _showRatingInvitation = false);
+    FocusManager.instance.primaryFocus?.unfocus();
   }
 
   // ── Sudden-death helpers ──────────────────────────────────────────────────
@@ -2631,9 +2788,10 @@ class _BoardScreenState extends State<BoardScreen>
                         // fourth modal.
                         TutorialManager.advance(TutorialPhase.fillHints);
                         TutorialManager.markSeen();
-                        WidgetsBinding.instance.addPostFrameCallback(
-                          (_) => _evaluateFillHint(),
-                        );
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          _evaluateFillHint();
+                          _maybeDispatchRatingInvitation();
+                        });
                         _restartHintTimer();
                       },
                     ),
@@ -2769,6 +2927,13 @@ class _BoardScreenState extends State<BoardScreen>
                       shouldLoop: false,
                     ),
                   ),
+
+                  if (_showRatingInvitation)
+                    RatingInvitationOverlay(
+                      lang: _lang,
+                      onRateAndroidGame: _launchRatingDestination,
+                      onDismiss: _dismissRatingInvitation,
+                    ),
                 ],
               ),
             ),

@@ -12,6 +12,7 @@ import 'welcome_screen.dart';
 import '../services/db_service.dart';
 import '../services/auth_service.dart';
 import '../services/haptic_service.dart';
+import '../services/rating_invitation_service.dart';
 import '../services/streak_service.dart';
 import '../services/tutorial_manager.dart';
 import '../models/player_model.dart';
@@ -29,6 +30,7 @@ class MainMenuScreen extends StatefulWidget {
 class _MainMenuScreenState extends State<MainMenuScreen> {
   String _playerName = '';
   GameState? _activeGame;
+  RatingGameplaySession? _activeRatingGameplaySession;
   AppLang _lang = AppLang.en;
   L get _l => L(_lang);
 
@@ -101,12 +103,17 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   }
 
   void _startOrResumeGame({bool isResume = false}) async {
+    final ratingGameplaySession = isResume
+        ? (_activeRatingGameplaySession ?? RatingGameplaySession())
+        : RatingGameplaySession();
+    _activeRatingGameplaySession = ratingGameplaySession;
     final returnedGame = await Navigator.of(context).push<GameState>(
       appRoute(
         BoardScreen(
           existingGame: isResume ? _activeGame : null,
           showNewGamePicker: !isResume,
           initialLang: _lang,
+          ratingGameplaySession: ratingGameplaySession,
         ),
       ),
     );
@@ -118,17 +125,22 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         _activeGame = returnedGame;
       } else {
         _activeGame = null;
+        _activeRatingGameplaySession = null;
       }
     });
   }
 
   void _startTutorial() async {
+    final ratingGameplaySession =
+        _activeRatingGameplaySession ?? RatingGameplaySession();
+    _activeRatingGameplaySession = ratingGameplaySession;
     final returnedGame = await Navigator.of(context).push<GameState>(
       appRoute(
         BoardScreen(
           existingGame: _activeGame,
           forceTutorial: true,
           initialLang: _lang,
+          ratingGameplaySession: ratingGameplaySession,
         ),
       ),
     );
@@ -140,6 +152,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         _activeGame = returnedGame;
       } else {
         _activeGame = null;
+        _activeRatingGameplaySession = null;
       }
     });
   }
