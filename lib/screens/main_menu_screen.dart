@@ -6,6 +6,7 @@ import '../theme_constants.dart';
 import '../models/game_model.dart';
 import '../utils/app_route.dart';
 import '../utils/localization.dart';
+import '../utils/player_name_policy.dart';
 import 'board_screen.dart';
 import 'duel_setup_screen.dart';
 import 'welcome_screen.dart';
@@ -16,11 +17,26 @@ import '../services/streak_service.dart';
 import '../services/tutorial_manager.dart';
 import '../models/player_model.dart';
 
+@visibleForTesting
+String resolveMainMenuPlayerName({
+  required String? savedName,
+  required String? initialPlayerName,
+}) {
+  if (PlayerNamePolicy.isValid(savedName)) {
+    return PlayerNamePolicy.normalize(savedName);
+  }
+  return initialPlayerName == null
+      ? 'Guest'
+      : PlayerNamePolicy.sanitize(initialPlayerName);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN MENU
 // ─────────────────────────────────────────────────────────────────────────────
 class MainMenuScreen extends StatefulWidget {
-  const MainMenuScreen({super.key});
+  const MainMenuScreen({super.key, this.initialPlayerName});
+
+  final String? initialPlayerName;
 
   @override
   State<MainMenuScreen> createState() => _MainMenuScreenState();
@@ -38,6 +54,9 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialPlayerName != null) {
+      _playerName = PlayerNamePolicy.sanitize(widget.initialPlayerName);
+    }
     _loadPlayerName();
     _loadMuteState();
     _loadSavedLang();
@@ -74,8 +93,13 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
   Future<void> _loadPlayerName() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
-      _playerName = prefs.getString('playerName') ?? 'Guest';
+      final savedName = prefs.getString('playerName');
+      _playerName = resolveMainMenuPlayerName(
+        savedName: savedName,
+        initialPlayerName: widget.initialPlayerName,
+      );
     });
   }
 
@@ -111,6 +135,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       ),
     );
 
+    if (!mounted) return;
     setState(() {
       if (returnedGame != null &&
           returnedGame.phase != Phase.winner &&
@@ -133,6 +158,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       ),
     );
 
+    if (!mounted) return;
     setState(() {
       if (returnedGame != null &&
           returnedGame.phase != Phase.winner &&

@@ -99,16 +99,14 @@ class L {
       isHe ? '  ניצחת בדו-קרב!' : '  You Win the Duel!';
   String get duelOpponentWinsBanner =>
       isHe ? '  היריב ניצח בדו-קרב' : '  Opponent Wins the Duel';
-  String get duelOpponentReady =>
-      isHe ? 'היריב מוכן!' : 'Opponent is ready!';
+  String get duelOpponentReady => isHe ? 'היריב מוכן!' : 'Opponent is ready!';
   String get duelWaitingOpponent =>
       isHe ? 'ממתין ליריב...' : 'Waiting for opponent...';
   String get btnPlayAgain => isHe ? 'שחק שוב' : 'Play Again';
   String get duelOpponentCaps => isHe ? 'יריב' : 'OPPONENT';
   String get duelResultWinTitle =>
       isHe ? '👑 ניצחת בדו-קרב!' : '👑 You Win the Duel!';
-  String get duelResultLossTitle =>
-      isHe ? '💀 היריב ניצח' : '💀 Opponent Wins';
+  String get duelResultLossTitle => isHe ? '💀 היריב ניצח' : '💀 Opponent Wins';
   String get duelSyncFailed => isHe
       ? 'בעיית חיבור — ייתכן שתוצאת הדו-קרב לא נשמרה.'
       : 'Connection issue — your duel result may not be recorded.';
@@ -122,9 +120,48 @@ class L {
   String get btnPlayAsGuest => isHe ? 'שחק כאורח' : 'Play as Guest';
   String get btnContinueGoogle =>
       isHe ? 'המשך עם Google' : 'Continue with Google';
-  String get btnContinuePhone =>
-      isHe ? 'המשך עם טלפון' : 'Continue with Phone';
+  String get btnContinuePhone => isHe ? 'המשך עם טלפון' : 'Continue with Phone';
   String get errEnterName => isHe ? 'נא להזין שם' : 'Please enter a name';
+  String errNameTooLong(int max) => isHe
+      ? 'השם יכול להכיל עד $max תווים'
+      : 'Name must be $max characters or fewer';
+  String get errGuestSignIn =>
+      isHe ? 'לא ניתן להתחבר כאורח כרגע.' : 'Guest sign-in is unavailable.';
+  String get errProfileSetup => isHe
+      ? 'לא ניתן להשלים את הגדרת הפרופיל כרגע.'
+      : 'Could not finish setting up your profile.';
+  String get infoGoogleCancelled =>
+      isHe ? 'ההתחברות עם Google בוטלה.' : 'Google sign-in was cancelled.';
+  String get infoGoogleInterrupted => isHe
+      ? 'ההתחברות עם Google הופסקה. אפשר לנסות שוב.'
+      : 'Google sign-in was interrupted. Please try again.';
+  String get errGoogleSignIn => isHe
+      ? 'ההתחברות עם Google נכשלה. אפשר לנסות שוב.'
+      : 'Google sign-in failed. Please try again.';
+  String get errPhoneCodeSend => isHe
+      ? 'לא ניתן לשלוח קוד אימות כרגע.'
+      : 'Could not send a verification code.';
+  String get errInvalidVerificationCode =>
+      isHe ? 'קוד האימות אינו תקין.' : 'The verification code is invalid.';
+  String get errVerificationFailed => isHe
+      ? 'האימות נכשל. אפשר לנסות שוב.'
+      : 'Verification failed. Please try again.';
+  String get phoneNumberTitle => isHe ? 'מספר טלפון' : 'Phone Number';
+  String get phoneNumberSubtitle =>
+      isHe ? 'יש להזין מספר בפורמט בינלאומי' : 'Enter in international format';
+  String get btnSendCode => isHe ? 'שליחת קוד' : 'Send Code';
+  String get verificationCodeTitle => isHe ? 'קוד אימות' : 'Verification Code';
+  String get verificationCodeSubtitle => isHe
+      ? 'יש להזין את הקוד בן 6 הספרות שנשלח לטלפון'
+      : 'Enter the 6-digit code sent to your phone';
+  String get btnVerify => isHe ? 'אימות' : 'Verify';
+  String get chooseNameTitle => isHe ? 'בחירת שם' : 'Choose Your Name';
+  String get chooseNameSubtitle => isHe
+      ? 'זה יהיה השם שיופיע בטבלת המובילים'
+      : 'This will be your name on the leaderboard';
+  String get chooseNameHint => isHe ? 'למשל: המלך ארתור' : 'e.g. King Arthur';
+  String get btnConfirm => isHe ? 'אישור' : 'Confirm';
+  String get btnCancel => isHe ? 'ביטול' : 'Cancel';
   String get updateRequiredMessage =>
       isHe ? 'עדכן את המשחק כדי להמשיך.' : 'Update the game to continue.';
   String get btnUpdate => isHe ? 'עדכון' : 'Update';
@@ -144,7 +181,8 @@ class L {
             'Win is declared when the frame holds 12 royals and no legal action remains. '
             'If any 11-pairs remain, clear them before the game can end. '
             'Fill the frame to win. Enjoy!';
-  String get btnReplayTutorial => isHe ? 'מדריך אינטראקטיבי' : 'Interactive Tutorial';
+  String get btnReplayTutorial =>
+      isHe ? 'מדריך אינטראקטיבי' : 'Interactive Tutorial';
   // Main Menu & Leaderboard Strings
   String get menuResume => isHe ? 'המשך משחק' : 'Resume Game';
   String get menuNewGame => isHe ? 'משחק חדש' : 'New Game';

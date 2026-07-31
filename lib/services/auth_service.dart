@@ -7,9 +7,17 @@ import 'tutorial_manager.dart';
 import 'daily_goal_service.dart';
 import 'xp_service.dart';
 import 'badge_service.dart';
+import '../utils/player_name_policy.dart';
+
+enum GoogleSignInFailureKind { canceled, interrupted, failure }
+
+class GoogleSignInInterruptedException implements Exception {
+  const GoogleSignInInterruptedException();
+}
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  FirebaseAuth get _auth => FirebaseAuth.instance;
+  static Future<void>? _googleInitialization;
 
   User? get currentUser => _auth.currentUser;
 
@@ -18,7 +26,9 @@ class AuthService {
   Future<UserCredential?> signInAnonymously(String displayName) async {
     try {
       final credential = await _auth.signInAnonymously();
-      await credential.user?.updateDisplayName(displayName);
+      await credential.user?.updateDisplayName(
+        PlayerNamePolicy.sanitize(displayName),
+      );
       return credential;
     } catch (_) {
       return null;
@@ -28,26 +38,118 @@ class AuthService {
   // ─── Google ────────────────────────────────────────────────────────────────
 
   Future<UserCredential?> signInWithGoogle() async {
-    try {
-      if (kIsWeb) {
+    if (kIsWeb) {
+      try {
         final googleProvider = GoogleAuthProvider()
           ..setCustomParameters({
             'client_id':
                 '961421919288-1oqcid53ipgtshukmvkp90cu2g1i21g2.apps.googleusercontent.com',
           });
-        return await _auth.signInWithPopup(googleProvider);
-      } else {
-        await GoogleSignIn.instance.initialize();
-        final googleUser = await GoogleSignIn.instance.authenticate();
-
-        final googleAuth = googleUser.authentication;
-        final credential = GoogleAuthProvider.credential(
-          idToken: googleAuth.idToken,
+        return await runWebGoogleSignInForTesting(
+          () => _auth.signInWithPopup(googleProvider),
         );
-        return await _auth.signInWithCredential(credential);
+      } catch (_) {
+        rethrow;
       }
+    }
+
+    try {
+      await _ensureGoogleSignInInitialized();
+      final googleUser = await GoogleSignIn.instance.authenticate();
+
+      final googleAuth = googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        idToken: googleAuth.idToken,
+      );
+      return await _auth.signInWithCredential(credential);
+    } on GoogleSignInException catch (error) {
+      switch (classifyGoogleSignInFailure(error)) {
+        case GoogleSignInFailureKind.canceled:
+          return null;
+        case GoogleSignInFailureKind.interrupted:
+          throw const GoogleSignInInterruptedException();
+        case GoogleSignInFailureKind.failure:
+          rethrow;
+      }
+    }
+  }
+
+  @visibleForTesting
+  static GoogleSignInFailureKind classifyGoogleSignInFailure(
+    GoogleSignInException error,
+  ) {
+    return switch (error.code) {
+      GoogleSignInExceptionCode.canceled => GoogleSignInFailureKind.canceled,
+      GoogleSignInExceptionCode.interrupted =>
+        GoogleSignInFailureKind.interrupted,
+      _ => GoogleSignInFailureKind.failure,
+    };
+  }
+
+  @visibleForTesting
+  static GoogleSignInFailureKind classifyWebGoogleFailureCode(String code) {
+    final normalized = code.startsWith('auth/') ? code.substring(5) : code;
+    return switch (normalized) {
+      'popup-closed-by-user' || 'web-context-cancelled' =>
+        GoogleSignInFailureKind.canceled,
+      'cancelled-popup-request' => GoogleSignInFailureKind.interrupted,
+      _ => GoogleSignInFailureKind.failure,
+    };
+  }
+
+  @visibleForTesting
+  static Future<T?> runWebGoogleSignInForTesting<T>(
+    Future<T> Function() authenticate,
+  ) async {
+    try {
+      return await authenticate();
+    } on FirebaseAuthException catch (error) {
+      switch (classifyWebGoogleFailureCode(error.code)) {
+        case GoogleSignInFailureKind.canceled:
+          return null;
+        case GoogleSignInFailureKind.interrupted:
+          throw const GoogleSignInInterruptedException();
+        case GoogleSignInFailureKind.failure:
+          rethrow;
+      }
+    }
+  }
+
+  Future<bool> rollbackNewPhoneSession({
+    required String? previousUid,
+    required String authenticatedUid,
+  }) {
+    return rollbackNewPhoneSessionForTesting(
+      previousUid: previousUid,
+      authenticatedUid: authenticatedUid,
+      currentUid: _auth.currentUser?.uid,
+      signOut: _auth.signOut,
+    );
+  }
+
+  @visibleForTesting
+  static Future<bool> rollbackNewPhoneSessionForTesting({
+    required String? previousUid,
+    required String authenticatedUid,
+    required String? currentUid,
+    required Future<void> Function() signOut,
+  }) async {
+    final isNewSession = previousUid != authenticatedUid;
+    if (!isNewSession || currentUid != authenticatedUid) return false;
+    await signOut();
+    return true;
+  }
+
+  static Future<void> _ensureGoogleSignInInitialized() async {
+    final initialization = _googleInitialization ??= GoogleSignIn.instance
+        .initialize();
+    try {
+      await initialization;
     } catch (_) {
-      return null;
+      if (identical(_googleInitialization, initialization)) {
+        _googleInitialization = null;
+      }
+      rethrow;
     }
   }
 
@@ -118,12 +220,12 @@ class AuthService {
           try {
             final userCred = await _auth.signInWithCredential(credential);
             onAutoVerified(userCred);
-          } catch (e) {
-            onError(e.toString());
+          } catch (_) {
+            onError('verification-failed');
           }
         },
-        verificationFailed: (FirebaseAuthException e) {
-          onError(e.message ?? 'Verification failed.');
+        verificationFailed: (_) {
+          onError('verification-failed');
         },
         codeSent: (String verificationId, int? resendToken) {
           onCodeSent(verificationId, resendToken);
@@ -132,8 +234,8 @@ class AuthService {
           // No-op: the user can still enter the code manually.
         },
       );
-    } catch (e) {
-      onError(e.toString());
+    } catch (_) {
+      onError('verification-failed');
     }
   }
 
@@ -157,6 +259,7 @@ class AuthService {
     try {
       await _auth.signOut();
       if (!kIsWeb) {
+        await _ensureGoogleSignInInitialized();
         await GoogleSignIn.instance.signOut();
       }
     } catch (_) {

@@ -132,6 +132,9 @@ class GameState {
   DateTime? pausedAt;
   int totalCardsDrawn;
   int? cardsDrawnWhenFrameFilled;
+  // Copied with the game so terminal effects survive State reconstruction and
+  // the existing in-memory restoration path.
+  bool terminalEffectsApplied;
 
   GameState._({
     required this.layout,
@@ -155,6 +158,7 @@ class GameState {
     this.pausedAt,
     required this.totalCardsDrawn,
     this.cardsDrawnWhenFrameFilled,
+    this.terminalEffectsApplied = false,
   }) : clearedCards = List<CardModel>.from(clearedCards);
 
   // ── Convenience getters ────────────────────────────────────────────────────
@@ -179,7 +183,8 @@ class GameState {
     final layout = buildBoardLayout();
 
     // Easy/Medium: replace king-corner slots with inner dumps (no kings in play).
-    if (difficulty == GameDifficulty.easy || difficulty == GameDifficulty.medium) {
+    if (difficulty == GameDifficulty.easy ||
+        difficulty == GameDifficulty.medium) {
       for (final i in [0, 3, 12, 15]) layout[i] = SlotType.innerDump;
     }
 
@@ -196,7 +201,8 @@ class GameState {
         CardModel(suit, const Jack()),
         CardModel(suit, const Queen()),
         // Easy/Medium: omit kings entirely.
-        if (difficulty != GameDifficulty.easy && difficulty != GameDifficulty.medium)
+        if (difficulty != GameDifficulty.easy &&
+            difficulty != GameDifficulty.medium)
           CardModel(suit, const King()),
       ]);
     }
@@ -249,12 +255,15 @@ class GameState {
     pausedAt: pausedAt,
     totalCardsDrawn: totalCardsDrawn,
     cardsDrawnWhenFrameFilled: cardsDrawnWhenFrameFilled,
+    terminalEffectsApplied: terminalEffectsApplied,
   );
 
   List<int> _idxOf(SlotType t) => [
     for (int i = 0; i < layout.length; i++)
       if (layout[i] == t) i,
   ];
+
+  bool _isValidCellIndex(int index) => index >= 0 && index < cells.length;
 
   bool get boardFull => cells.every((c) => c != null);
   int get remainingInDeck => drawPile.length;
@@ -301,8 +310,7 @@ class GameState {
   ///
   /// [isRoyalFrameComplete] can become true earlier; the winner phase is not
   /// entered until no legal continuation remains.
-  bool get isWinConditionMet =>
-      phase == Phase.winner && isRoyalFrameComplete;
+  bool get isWinConditionMet => phase == Phase.winner && isRoyalFrameComplete;
 
   bool get frameFull =>
       _idxOf(SlotType.kingCorner).every((i) => cells[i] != null) &&
@@ -384,6 +392,7 @@ class GameState {
   }
 
   bool tryPlaceAt(int index, {bool godMode = false}) {
+    if (!_isValidCellIndex(index)) return false;
     if (phase != Phase.fill || current == null || cells[index] != null)
       return false;
     final st = layout[index];
@@ -445,7 +454,9 @@ class GameState {
   }
 
   void toggleSelectForClear(int index) {
-    final allowedInFill = phase == Phase.fill && difficulty == GameDifficulty.easy;
+    if (!_isValidCellIndex(index)) return;
+    final allowedInFill =
+        phase == Phase.fill && difficulty == GameDifficulty.easy;
     if (phase != Phase.clear && !allowedInFill) return;
     final c = cells[index];
     if (c == null || !c.isNumOrAce) return;
@@ -454,6 +465,11 @@ class GameState {
 
   bool get canClearSelection {
     if (selectedForClear.length != kMaxCardsForClear) return false;
+    if (selectedForClear.any(
+      (index) => !_isValidCellIndex(index) || cells[index] == null,
+    )) {
+      return false;
+    }
     return selectedForClear
             .map((i) => cells[i]!.valueForSum)
             .fold(0, (a, b) => a + b) ==
@@ -487,7 +503,9 @@ class GameState {
         final cb = cells[b];
         if (cb == null || !cb.isNumOrAce) continue;
         if (ca.valueForSum + cb.valueForSum == 11) {
-          used..add(a)..add(b);
+          used
+            ..add(a)
+            ..add(b);
           result.add(([a, b], [ca, cb]));
           break;
         }
@@ -501,6 +519,10 @@ class GameState {
   /// animation.
   void autoRemoveFoundPairs(List<(List<int>, List<CardModel>)> pairs) {
     for (final (indices, cards) in pairs) {
+      if (indices.length != cards.length ||
+          indices.any((index) => !_isValidCellIndex(index))) {
+        continue;
+      }
       for (int k = 0; k < indices.length; k++) {
         clearedCards.add(cards[k]);
         cells[indices[k]] = null;
@@ -556,8 +578,7 @@ class GameState {
       (peekActiveNow && drawPile.isNotEmpty) ? drawPile.last : null;
 
   bool moveCard(int from, int to, {bool godMode = false}) {
-    if (!cells.asMap().containsKey(from) || !cells.asMap().containsKey(to))
-      return false;
+    if (!_isValidCellIndex(from) || !_isValidCellIndex(to)) return false;
     if (cells[from] == null || cells[to] != null) return false;
     final c = cells[from]!;
     final stTo = layout[to];

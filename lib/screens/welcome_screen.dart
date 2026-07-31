@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +9,8 @@ import '../theme_constants.dart';
 import '../utils/app_feedback.dart';
 import '../utils/app_route.dart';
 import '../utils/localization.dart';
+import '../utils/phone_verification_attempt.dart';
+import '../utils/player_name_policy.dart';
 import '../services/auth_service.dart';
 import '../services/db_service.dart';
 import 'main_menu_screen.dart';
@@ -21,7 +25,9 @@ const double _kIconSize = 22.0;
 const double _kLabelFontSize = 16.0;
 
 class WelcomeScreen extends StatefulWidget {
-  const WelcomeScreen({super.key});
+  const WelcomeScreen({super.key, this.authService});
+
+  final AuthService? authService;
 
   @override
   State<WelcomeScreen> createState() => _WelcomeScreenState();
@@ -29,19 +35,22 @@ class WelcomeScreen extends StatefulWidget {
 
 class _WelcomeScreenState extends State<WelcomeScreen> {
   final TextEditingController _nameCtrl = TextEditingController();
-  final AuthService _authService = AuthService();
+  late final AuthService _authService;
   bool _isLoading = false;
+  bool _phoneFlowInProgress = false;
   AppLang _lang = AppLang.en;
   L get _l => L(_lang);
 
   // Title entrance animation
   bool _visible = false;
+  Timer? _entranceTimer;
 
   @override
   void initState() {
     super.initState();
+    _authService = widget.authService ?? AuthService();
     _loadSavedLang();
-    Future.delayed(const Duration(milliseconds: 150), () {
+    _entranceTimer = Timer(const Duration(milliseconds: 150), () {
       if (mounted) setState(() => _visible = true);
     });
   }
@@ -54,6 +63,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   @override
   void dispose() {
+    _entranceTimer?.cancel();
     _nameCtrl.dispose();
     super.dispose();
   }
@@ -75,31 +85,48 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     showAppSnack(context, message);
   }
 
+  String _boundedPlayerName(String? value) {
+    return PlayerNamePolicy.sanitize(value);
+  }
+
   // ─── Guest login ──────────────────────────────────────────────────────────
 
   void _startGame() async {
-    final name = _nameCtrl.text.trim();
-    if (name.isEmpty) {
+    final name = PlayerNamePolicy.normalize(_nameCtrl.text);
+    if (!PlayerNamePolicy.isValid(name) && name.isEmpty) {
       _showError(_l.errEnterName);
+      return;
+    }
+    if (!PlayerNamePolicy.isValid(name)) {
+      _showError(_l.errNameTooLong(PlayerNamePolicy.maxCharacters));
       return;
     }
 
     setState(() => _isLoading = true);
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('playerName', name);
-    final credential = await _authService.signInAnonymously(name);
+    try {
+      final credential = await _authService.signInAnonymously(name);
+      if (!mounted) return;
 
-    // Create the player document immediately so a guest who hasn't finished
-    // a game yet still has a valid backend record. This keeps the startup
-    // session validation from treating them as stale on the next launch.
-    final uid = credential?.user?.uid;
-    if (uid != null) {
+      final uid = credential?.user?.uid;
+      if (uid == null) {
+        setState(() => _isLoading = false);
+        _showError(_l.errGuestSignIn);
+        return;
+      }
+
       await DbService().ensurePlayerDoc(uid, name);
-    }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('playerName', name);
+      if (!mounted) return;
 
-    setState(() => _isLoading = false);
-    _goToMainMenu();
+      setState(() => _isLoading = false);
+      _goToMainMenu();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showError(_l.errProfileSetup);
+    }
   }
 
   // ─── Google login ─────────────────────────────────────────────────────────
@@ -109,52 +136,77 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
     try {
       final userCred = await _authService.signInWithGoogle();
+      if (!mounted) return;
 
       if (userCred != null) {
-        final name = userCred.user?.displayName ?? 'Player';
+        final user = userCred.user;
+        if (user == null) {
+          setState(() => _isLoading = false);
+          _showError(_l.errProfileSetup);
+          return;
+        }
+
+        final name = _boundedPlayerName(user.displayName);
+        await DbService().ensurePlayerDoc(user.uid, name);
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('playerName', name);
+        if (!mounted) return;
         _goToMainMenu();
       } else {
         setState(() => _isLoading = false);
-        _showInfo('Google Login cancelled by user.');
+        _showInfo(_l.infoGoogleCancelled);
       }
-    } catch (e) {
+    } on GoogleSignInInterruptedException {
+      if (!mounted) return;
       setState(() => _isLoading = false);
-      _showError('DEBUG ERROR: $e');
+      _showInfo(_l.infoGoogleInterrupted);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showError(_l.errGoogleSignIn);
     }
   }
 
   // ─── Phone login ──────────────────────────────────────────────────────────
 
   void _signInWithPhone() async {
-    final phone = await _showPhoneInputDialog();
-    if (phone == null || phone.isEmpty) return;
+    if (_phoneFlowInProgress) return;
+    _phoneFlowInProgress = true;
+    final previousUid = _authService.currentUser?.uid;
 
-    setState(() => _isLoading = true);
+    try {
+      final phone = await _showPhoneInputDialog();
+      if (!mounted || phone == null || phone.isEmpty) return;
 
-    if (kIsWeb) {
-      await _handlePhoneWeb(phone);
-    } else {
-      await _handlePhoneNative(phone);
+      setState(() => _isLoading = true);
+
+      if (kIsWeb) {
+        await _handlePhoneWeb(phone, previousUid: previousUid);
+      } else {
+        await _handlePhoneNative(phone, previousUid: previousUid);
+      }
+    } finally {
+      _phoneFlowInProgress = false;
     }
   }
 
   /// Web path: Firebase handles reCAPTCHA internally.
-  Future<void> _handlePhoneWeb(String phoneNumber) async {
+  Future<void> _handlePhoneWeb(
+    String phoneNumber, {
+    required String? previousUid,
+  }) async {
     final confirmationResult = await _authService.sendSmsCodeWeb(phoneNumber);
+    if (!mounted) return;
 
     setState(() => _isLoading = false);
 
     if (confirmationResult == null) {
-      _showError(
-        'Failed to send verification code. Check the number and try again.',
-      );
+      _showError(_l.errPhoneCodeSend);
       return;
     }
 
     final smsCode = await _showSmsCodeDialog();
-    if (smsCode == null || smsCode.isEmpty) return;
+    if (!mounted || smsCode == null || smsCode.isEmpty) return;
 
     setState(() => _isLoading = true);
 
@@ -163,66 +215,137 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         confirmationResult,
         smsCode,
       );
+      if (!mounted) return;
       if (userCred != null) {
-        await _savePhonePlayerAndNavigate(userCred);
+        await _savePhonePlayerAndNavigate(
+          userCred,
+          previousUid: previousUid,
+        );
       }
-    } on FirebaseAuthException catch (e) {
+    } on FirebaseAuthException {
+      if (!mounted) return;
       setState(() => _isLoading = false);
-      _showError(e.message ?? 'Invalid verification code.');
-    } catch (e) {
+      _showError(_l.errInvalidVerificationCode);
+    } catch (_) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
-      _showError('Verification failed: $e');
+      _showError(_l.errVerificationFailed);
     }
   }
 
   /// Native (Android / iOS) path.
-  Future<void> _handlePhoneNative(String phoneNumber) async {
-    String? verificationId;
-    bool autoVerified = false;
+  Future<void> _handlePhoneNative(
+    String phoneNumber, {
+    required String? previousUid,
+  }) async {
+    final attempt = PhoneVerificationAttempt();
 
-    await _authService.sendSmsCodeNative(
-      phoneNumber: phoneNumber,
-      onCodeSent: (id, _) {
-        verificationId = id;
-      },
-      onAutoVerified: (userCred) async {
-        autoVerified = true;
-        await _savePhonePlayerAndNavigate(userCred);
-      },
-      onError: (error) {
-        setState(() => _isLoading = false);
-        _showError(error);
-      },
-    );
+    try {
+      await _authService.sendSmsCodeNative(
+        phoneNumber: phoneNumber,
+        onCodeSent: (verificationId, _) async {
+          if (!mounted) {
+            attempt.complete();
+            return;
+          }
+          if (attempt.authenticationStarted || attempt.codeDialogOpen) return;
+          await _confirmNativeSmsCode(
+            verificationId,
+            attempt,
+            previousUid: previousUid,
+          );
+        },
+        onAutoVerified: (userCred) async {
+          if (!mounted) {
+            attempt.complete();
+            return;
+          }
+          if (!attempt.claimAuthentication()) return;
+          if (attempt.codeDialogOpen) {
+            Navigator.of(context, rootNavigator: true).pop();
+          }
+          await _savePhonePlayerAndNavigate(
+            userCred,
+            previousUid: previousUid,
+          );
+          attempt.complete();
+        },
+        onError: (_) {
+          if (!mounted) {
+            attempt.complete();
+            return;
+          }
+          if (attempt.authenticationStarted) return;
+          setState(() => _isLoading = false);
+          _showError(_l.errVerificationFailed);
+          attempt.complete();
+        },
+      );
+      await attempt.done;
+    } catch (_) {
+      attempt.complete();
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showError(_l.errVerificationFailed);
+    }
+  }
 
-    if (autoVerified) return;
-
+  Future<void> _confirmNativeSmsCode(
+    String verificationId,
+    PhoneVerificationAttempt attempt, {
+    required String? previousUid,
+  }) async {
+    if (!mounted) {
+      attempt.complete();
+      return;
+    }
     setState(() => _isLoading = false);
 
-    if (verificationId == null) return;
+    attempt.codeDialogOpen = true;
+    final String? smsCode;
+    try {
+      smsCode = await _showSmsCodeDialog();
+    } finally {
+      attempt.codeDialogOpen = false;
+    }
 
-    final smsCode = await _showSmsCodeDialog();
-    if (smsCode == null || smsCode.isEmpty) return;
+    if (!mounted) {
+      attempt.complete();
+      return;
+    }
+    if (smsCode == null || smsCode.isEmpty) {
+      if (!attempt.authenticationStarted) attempt.complete();
+      return;
+    }
+    if (!attempt.claimAuthentication()) return;
 
     setState(() => _isLoading = true);
 
     try {
       final userCred = await _authService.confirmSmsCodeNative(
-        verificationId: verificationId!,
+        verificationId: verificationId,
         smsCode: smsCode,
       );
-      if (userCred != null) {
-        await _savePhonePlayerAndNavigate(userCred);
-      } else {
+      if (!mounted) return;
+      if (userCred == null) {
         setState(() => _isLoading = false);
-        _showError('Verification failed. Please try again.');
+        _showError(_l.errVerificationFailed);
+        return;
       }
-    } on FirebaseAuthException catch (e) {
+      await _savePhonePlayerAndNavigate(
+        userCred,
+        previousUid: previousUid,
+      );
+    } on FirebaseAuthException {
+      if (!mounted) return;
       setState(() => _isLoading = false);
-      _showError(e.message ?? 'Invalid verification code.');
-    } catch (e) {
+      _showError(_l.errInvalidVerificationCode);
+    } catch (_) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
-      _showError('Verification failed: $e');
+      _showError(_l.errVerificationFailed);
+    } finally {
+      attempt.complete();
     }
   }
 
@@ -231,116 +354,145 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   /// Phone auth never provides a display name, so we check if one is
   /// missing (null, empty, or the generic "player" fallback) and show a
   /// mandatory name-picker dialog before proceeding to the main menu.
-  Future<void> _savePhonePlayerAndNavigate(UserCredential userCred) async {
+  Future<void> _savePhonePlayerAndNavigate(
+    UserCredential userCred, {
+    required String? previousUid,
+  }) async {
     final user = userCred.user;
-    final existingName = user?.displayName ?? '';
-
-    final needsName =
-        existingName.isEmpty || existingName.toLowerCase() == 'player';
-
-    if (needsName) {
-      setState(() => _isLoading = false);
-
-      final chosenName = await _showPlayerNameDialog();
-      if (!mounted) return;
-
-      // User dismissed the dialog without providing a name — abort login.
-      if (chosenName == null || chosenName.trim().isEmpty) return;
-
-      setState(() => _isLoading = true);
-
-      // Persist the name in Firebase Auth + Firestore.
-      await user?.updateDisplayName(chosenName.trim());
-      if (user != null) {
-        await DbService().updateDisplayName(user.uid, chosenName.trim());
+    if (user == null) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showError(_l.errProfileSetup);
       }
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('playerName', chosenName.trim());
-    } else {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('playerName', existingName);
+      return;
     }
 
-    setState(() => _isLoading = false);
-    _goToMainMenu();
+    try {
+      final rawExistingName = user.displayName?.trim() ?? '';
+      final needsName =
+          rawExistingName.isEmpty || rawExistingName.toLowerCase() == 'player';
+
+      late final String finalName;
+      if (needsName) {
+        setState(() => _isLoading = false);
+
+        final chosenName = await _showPlayerNameDialog();
+        if (!mounted) return;
+
+        if (chosenName == null || chosenName.trim().isEmpty) {
+          await _authService.rollbackNewPhoneSession(
+            previousUid: previousUid,
+            authenticatedUid: user.uid,
+          );
+          if (mounted) setState(() => _isLoading = false);
+          return;
+        }
+
+        setState(() => _isLoading = true);
+        finalName = _boundedPlayerName(chosenName);
+        await user.updateDisplayName(finalName);
+      } else {
+        finalName = _boundedPlayerName(rawExistingName);
+      }
+
+      await DbService().ensurePlayerDoc(user.uid, finalName);
+      await DbService().updateDisplayName(user.uid, finalName);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('playerName', finalName);
+      if (!mounted) return;
+
+      setState(() => _isLoading = false);
+      _goToMainMenu();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      _showError(_l.errProfileSetup);
+    }
   }
 
   // ─── Dialogs ──────────────────────────────────────────────────────────────
 
-  Future<String?> _showPhoneInputDialog() async {
-    final ctrl = TextEditingController();
-    final result = await showDialog<String>(
+  Widget _withDialogDirection(Widget child) {
+    return Directionality(
+      textDirection: _lang == AppLang.he
+          ? TextDirection.rtl
+          : TextDirection.ltr,
+      child: child,
+    );
+  }
+
+  Future<String?> _showPhoneInputDialog() {
+    return showDialog<String>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.7),
-      builder: (ctx) => _RoyalDialog(
-        title: 'Phone Number',
-        subtitle: 'Enter in international format',
+      builder: (ctx) => _withDialogDirection(
+        _RoyalDialog(
+          title: _l.phoneNumberTitle,
+          subtitle: _l.phoneNumberSubtitle,
         hintText: '+972 50 123 4567',
-        controller: ctrl,
         keyboardType: TextInputType.phone,
         inputFormatters: [
           FilteringTextInputFormatter.allow(RegExp(r'[+\d\s\-]')),
         ],
-        confirmLabel: 'Send Code',
-        onConfirm: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+          confirmLabel: _l.btnSendCode,
+          cancelLabel: _l.btnCancel,
+          onConfirm: (value) => Navigator.of(ctx).pop(value),
         onCancel: () => Navigator.of(ctx).pop(null),
+        ),
       ),
     );
-    ctrl.dispose();
-    return result;
   }
 
-  Future<String?> _showSmsCodeDialog() async {
-    final ctrl = TextEditingController();
-    final result = await showDialog<String>(
+  Future<String?> _showSmsCodeDialog() {
+    return showDialog<String>(
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black.withValues(alpha: 0.7),
-      builder: (ctx) => _RoyalDialog(
-        title: 'Verification Code',
-        subtitle: 'Enter the 6-digit code sent to your phone',
+      builder: (ctx) => _withDialogDirection(
+        _RoyalDialog(
+          title: _l.verificationCodeTitle,
+          subtitle: _l.verificationCodeSubtitle,
         hintText: '000000',
-        controller: ctrl,
         keyboardType: TextInputType.number,
         inputFormatters: [
           FilteringTextInputFormatter.digitsOnly,
           LengthLimitingTextInputFormatter(6),
         ],
-        confirmLabel: 'Verify',
-        onConfirm: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+          confirmLabel: _l.btnVerify,
+          cancelLabel: _l.btnCancel,
+          onConfirm: (value) => Navigator.of(ctx).pop(value),
         onCancel: () => Navigator.of(ctx).pop(null),
+        ),
       ),
     );
-    ctrl.dispose();
-    return result;
   }
 
   /// Mandatory name-picker shown after phone sign-in.
   /// [barrierDismissible] is false so the user must pick a name or cancel.
-  Future<String?> _showPlayerNameDialog() async {
-    final ctrl = TextEditingController();
-    final result = await showDialog<String>(
+  Future<String?> _showPlayerNameDialog() {
+    return showDialog<String>(
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black.withValues(alpha: 0.7),
-      builder: (ctx) => _RoyalDialog(
-        title: 'Choose Your Name',
-        subtitle: 'This will be your name on the leaderboard',
-        hintText: 'e.g. King Arthur',
-        controller: ctrl,
+      builder: (ctx) => _withDialogDirection(
+        _RoyalDialog(
+          title: _l.chooseNameTitle,
+          subtitle: _l.chooseNameSubtitle,
+          hintText: _l.chooseNameHint,
         keyboardType: TextInputType.name,
-        inputFormatters: [LengthLimitingTextInputFormatter(20)],
-        confirmLabel: 'Confirm',
-        onConfirm: () {
-          final name = ctrl.text.trim();
+          inputFormatters: [
+            LengthLimitingTextInputFormatter(PlayerNamePolicy.maxCharacters),
+          ],
+          confirmLabel: _l.btnConfirm,
+          cancelLabel: _l.btnCancel,
+          onConfirm: (name) {
           if (name.isNotEmpty) Navigator.of(ctx).pop(name);
         },
         onCancel: () => Navigator.of(ctx).pop(null),
+        ),
       ),
     );
-    ctrl.dispose();
-    return result;
   }
 
   // ─── Build ─────────────────────────────────────────────────────────────────
@@ -356,7 +508,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     final topInset = MediaQuery.of(context).padding.top;
     return Scaffold(
       backgroundColor: kBurgundy,
-      body: Stack(
+      body: Directionality(
+        textDirection: _lang == AppLang.he
+            ? TextDirection.rtl
+            : TextDirection.ltr,
+        child: Stack(
         children: [
           // ── Subtle radial glow decoration ──────────────────────────────────
           Positioned(top: -80, left: -60, child: _glowCircle(340)),
@@ -364,7 +520,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
           Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 40,
+                  vertical: 32,
+                ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -421,6 +580,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                     width: _kButtonWidth,
                     child: TextField(
                       controller: _nameCtrl,
+                        inputFormatters: [
+                          LengthLimitingTextInputFormatter(
+                            PlayerNamePolicy.maxCharacters,
+                          ),
+                        ],
                       style: const TextStyle(color: kGoldLight, fontSize: 17),
                       textAlign: TextAlign.center,
                       decoration: InputDecoration(
@@ -452,6 +616,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
           // Prominent language toggle pinned to top-right
           Positioned(top: topInset + 8, right: 16, child: _buildLangToggle()),
         ],
+        ),
       ),
     );
   }
@@ -640,15 +805,15 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 // Royal-themed reusable dialog
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _RoyalDialog extends StatelessWidget {
+class _RoyalDialog extends StatefulWidget {
   const _RoyalDialog({
     required this.title,
     required this.subtitle,
     required this.hintText,
-    required this.controller,
     required this.keyboardType,
     required this.inputFormatters,
     required this.confirmLabel,
+    required this.cancelLabel,
     required this.onConfirm,
     required this.onCancel,
   });
@@ -656,17 +821,33 @@ class _RoyalDialog extends StatelessWidget {
   final String title;
   final String subtitle;
   final String hintText;
-  final TextEditingController controller;
   final TextInputType keyboardType;
   final List<TextInputFormatter> inputFormatters;
   final String confirmLabel;
-  final VoidCallback onConfirm;
+  final String cancelLabel;
+  final ValueChanged<String> onConfirm;
   final VoidCallback onCancel;
+
+  @override
+  State<_RoyalDialog> createState() => _RoyalDialogState();
+}
+
+class _RoyalDialogState extends State<_RoyalDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _confirm() => widget.onConfirm(_controller.text.trim());
 
   @override
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
+      child: SingleChildScrollView(
       child: Container(
         width: 320,
         padding: const EdgeInsets.fromLTRB(28, 28, 28, 20),
@@ -686,7 +867,7 @@ class _RoyalDialog extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              title,
+                widget.title,
               style: const TextStyle(
                 color: kGold,
                 fontSize: 20,
@@ -696,7 +877,7 @@ class _RoyalDialog extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              subtitle,
+                widget.subtitle,
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: kGoldDark.withValues(alpha: 0.75),
@@ -706,9 +887,9 @@ class _RoyalDialog extends StatelessWidget {
             const SizedBox(height: 20),
 
             TextField(
-              controller: controller,
-              keyboardType: keyboardType,
-              inputFormatters: inputFormatters,
+                controller: _controller,
+                keyboardType: widget.keyboardType,
+                inputFormatters: widget.inputFormatters,
               autofocus: true,
               style: const TextStyle(
                 color: kGoldLight,
@@ -717,7 +898,7 @@ class _RoyalDialog extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
               decoration: InputDecoration(
-                hintText: hintText,
+                  hintText: widget.hintText,
                 hintStyle: TextStyle(
                   color: kGoldDark.withValues(alpha: 0.45),
                   fontSize: 15,
@@ -730,7 +911,7 @@ class _RoyalDialog extends StatelessWidget {
                   borderSide: BorderSide(color: kGold, width: 2),
                 ),
               ),
-              onSubmitted: (_) => onConfirm(),
+                onSubmitted: (_) => _confirm(),
             ),
             const SizedBox(height: 28),
 
@@ -749,10 +930,10 @@ class _RoyalDialog extends StatelessWidget {
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      onPressed: onCancel,
-                      child: const Text(
-                        'Cancel',
-                        style: TextStyle(fontSize: 14),
+                        onPressed: widget.onCancel,
+                        child: Text(
+                          widget.cancelLabel,
+                          style: const TextStyle(fontSize: 14),
                       ),
                     ),
                   ),
@@ -769,9 +950,9 @@ class _RoyalDialog extends StatelessWidget {
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      onPressed: onConfirm,
+                        onPressed: _confirm,
                       child: Text(
-                        confirmLabel,
+                          widget.confirmLabel,
                         style: const TextStyle(
                           color: kGold,
                           fontSize: 14,
@@ -784,6 +965,7 @@ class _RoyalDialog extends StatelessWidget {
               ],
             ),
           ],
+          ),
         ),
       ),
     );

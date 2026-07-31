@@ -5,15 +5,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth_service.dart';
 import 'db_service.dart';
+import '../utils/player_name_policy.dart';
 
 /// Owns app startup: App Check activation + guest-session validation.
 ///
-/// Guards against Android Auto-Backup restoring stale SharedPreferences
-/// after a reinstall: if the cached session no longer matches a live
-/// Firebase user + Firestore player document, the local state is wiped
-/// and a fresh anonymous session is created silently.
+/// Reconciles cached identity with live Firebase and Firestore state without
+/// destroying a valid authenticated session when the server is unavailable.
 class AppInitializer {
   AppInitializer._();
+
+  static Future<void>? _appCheckActivation;
 
   /// Call after [Firebase.initializeApp]. Returns the player name the app
   /// should boot with, or null → route to WelcomeScreen.
@@ -24,13 +25,17 @@ class AppInitializer {
 
   // ── App Check ──────────────────────────────────────────────────────────────
 
-  static Future<void> _activateAppCheck() async {
+  static Future<void> _activateAppCheck() {
+    return activateAppCheckOnceForTesting(_activateAppCheckUncached);
+  }
+
+  static Future<void> _activateAppCheckUncached() async {
     if (kIsWeb && kDebugMode) return;
 
     await FirebaseAppCheck.instance.activate(
       // Android/iOS: Play Integrity / App Attest in release; debug provider in debug.
       providerAndroid: kReleaseMode ? AndroidPlayIntegrityProvider() : AndroidDebugProvider(),
-      providerApple:   kReleaseMode ? AppleAppAttestProvider()       : AppleDebugProvider(),
+      providerApple: kReleaseMode ? AppleAppAttestWithDeviceCheckFallbackProvider() : AppleDebugProvider(),
       // Web: always pass the reCAPTCHA provider.
       // In debug/dev the JS global `self.FIREBASE_APPCHECK_DEBUG_TOKEN = true`
       // (set in web/index.html for localhost) intercepts the request before it
@@ -48,6 +53,26 @@ class AppInitializer {
     }
   }
 
+  @visibleForTesting
+  static Future<void> activateAppCheckOnceForTesting(
+    Future<void> Function() activate,
+  ) async {
+    final activation = _appCheckActivation ??= activate();
+    try {
+      await activation;
+    } catch (_) {
+      if (identical(_appCheckActivation, activation)) {
+        _appCheckActivation = null;
+      }
+      rethrow;
+    }
+  }
+
+  @visibleForTesting
+  static void resetAppCheckActivationForTesting() {
+    _appCheckActivation = null;
+  }
+
   // ── Guest-session validation ───────────────────────────────────────────────
 
   /// Returns the validated player name, or null if there is no session
@@ -55,28 +80,64 @@ class AppInitializer {
   static Future<String?> _validateGuestSession() async {
     final prefs = await SharedPreferences.getInstance();
     final String? savedName = prefs.getString('playerName');
-    if (savedName == null) return null; // Fresh install — nothing to validate.
+    final user = FirebaseAuth.instance.currentUser;
+    return validateSessionStateForTesting(
+      savedName: savedName,
+      authenticatedUid: user?.uid,
+      authenticatedDisplayName: user?.displayName,
+      playerDocExists: _playerDocExistsOnServer,
+      ensurePlayerDoc: (uid, name) => DbService().ensurePlayerDoc(uid, name),
+      persistPlayerName: (name) => prefs.setString('playerName', name),
+      recoverSession: _recoverSession,
+    );
+  }
 
-    final auth = FirebaseAuth.instance;
-    final user = auth.currentUser;
+  @visibleForTesting
+  static Future<String?> validateSessionStateForTesting({
+    required String? savedName,
+    required String? authenticatedUid,
+    required String? authenticatedDisplayName,
+    required Future<bool?> Function(String uid) playerDocExists,
+    required Future<void> Function(String uid, String name) ensurePlayerDoc,
+    required Future<void> Function(String name) persistPlayerName,
+    required Future<String?> Function(String savedName) recoverSession,
+  }) async {
+    if (authenticatedUid != null) {
+      final effectiveName = PlayerNamePolicy.sanitize(
+        savedName ?? authenticatedDisplayName,
+      );
+      final bool? exists = await playerDocExists(authenticatedUid);
 
-    if (user != null) {
-      final bool? exists = await _playerDocExistsOnServer(user.uid);
+      // An unavailable server must never destroy a valid Firebase identity.
+      if (exists == null) return effectiveName;
 
-      // Network error / timeout — assume the session is valid rather than
-      // wiping a legitimate user who happens to be offline.
-      if (exists == null) return savedName;
+      if (!exists) {
+        try {
+          await ensurePlayerDoc(authenticatedUid, effectiveName);
+        } catch (_) {
+          debugPrint(
+            '[AppInitializer] Could not heal the authenticated profile.',
+          );
+          return effectiveName;
+        }
+      }
 
-      if (exists) return savedName; // Healthy session.
-
-      // Auth user exists but the backend doc is gone — stale identity.
-      try {
-        await auth.signOut();
-      } catch (_) {}
+      // Persist a recovered or normalized name only after required backend
+      // state exists. Unknown server state already returned above.
+      if (savedName != effectiveName) {
+        try {
+          await persistPlayerName(effectiveName);
+        } catch (_) {
+          debugPrint(
+            '[AppInitializer] Could not persist the recovered player name.',
+          );
+        }
+      }
+      return effectiveName;
     }
-    // else: Auto-Backup restored prefs but no auth user survived — stale.
 
-    return _recoverSession(savedName);
+    if (savedName == null) return null;
+    return recoverSession(PlayerNamePolicy.sanitize(savedName));
   }
 
   /// Server-driven existence check. Returns null when the answer is unknown
@@ -91,24 +152,26 @@ class AppInitializer {
     }
   }
 
-  /// Wipes stale local state and silently starts a fresh guest session,
-  /// preserving the player's display name. Returns null if recovery fails
-  /// (e.g. offline) so the app falls back to the WelcomeScreen.
+  /// Replaces a cached session that no longer has an authenticated user.
+  ///
+  /// Local progress is cleared only after authentication and the replacement
+  /// player document have both succeeded, so an offline recovery attempt is
+  /// non-destructive.
   static Future<String?> _recoverSession(String savedName) async {
+    final safeName = PlayerNamePolicy.sanitize(savedName);
     try {
-      await AuthService.clearLocalUserData();
-
-      final credential = await AuthService().signInAnonymously(savedName);
+      final credential = await AuthService().signInAnonymously(safeName);
       final uid = credential?.user?.uid;
       if (uid == null) return null;
 
-      await DbService().ensurePlayerDoc(uid, savedName);
+      await DbService().ensurePlayerDoc(uid, safeName);
+      await AuthService.clearLocalUserData();
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('playerName', savedName);
-      return savedName;
+      await prefs.setString('playerName', safeName);
+      return safeName;
     } catch (_) {
-      return null; // Silent — user simply re-onboards via WelcomeScreen.
+      return null;
     }
   }
 }

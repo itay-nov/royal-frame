@@ -26,6 +26,7 @@ import '../services/daily_goal_service.dart';
 import '../services/xp_service.dart';
 import '../services/badge_service.dart';
 import '../utils/app_feedback.dart';
+import '../utils/terminal_effect_guard.dart';
 import '../widgets/board/deck_tag.dart';
 import '../widgets/board/duel_hud.dart';
 import '../widgets/dialogs/cosmetics_shop_dialog.dart';
@@ -38,13 +39,7 @@ import '../widgets/overlay_entrance.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // TUTORIAL HINT TYPES
 // ─────────────────────────────────────────────────────────────────────────────
-enum _HintType {
-  none,
-  numberCard,
-  royalCard,
-  clearStart,
-  clearFirstDone,
-}
+enum _HintType { none, numberCard, royalCard, clearStart, clearFirstDone }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BOARD SCREEN
@@ -157,10 +152,8 @@ class _BoardScreenState extends State<BoardScreen>
   int _clearHintStep = 0;
   Timer? _hintAutoTimer;
 
-  // Prevents duplicate XP awards if _checkEndState is called more than once.
-  bool _xpAwardedThisGame = false;
-  // Prevents duplicate stats/goal updates when overlay rebuilds.
-  bool _statsUpdatedThisGame = false;
+  final TerminalEffectGuard _terminalEffects = TerminalEffectGuard();
+  late final TerminalProgressCoordinator _terminalProgress;
 
   // Optional-clearing setting
   static const String _optionalClearingPrefKey = 'royalFrameOptionalClearing';
@@ -204,6 +197,10 @@ class _BoardScreenState extends State<BoardScreen>
       duration: const Duration(milliseconds: 2400),
     );
     game = widget.existingGame ?? GameState.newGame();
+    _terminalProgress = TerminalProgressCoordinator(
+      dailyGoalLoad: DailyGoalService.load(),
+      xpLoad: XpService.load(),
+    );
     _difficulty = game.difficulty;
     _loadSavedDifficulty();
 
@@ -214,11 +211,16 @@ class _BoardScreenState extends State<BoardScreen>
     }
 
     game.evaluateGameOverInFill();
+    if (game.phase == Phase.winner || game.phase == Phase.gameOver) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _checkEndState();
+      });
+    }
 
     if (widget.showNewGamePicker) {
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) { if (mounted) _openDifficultyPicker(); },
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openDifficultyPicker();
+      });
     }
 
     _initAudio();
@@ -227,10 +229,6 @@ class _BoardScreenState extends State<BoardScreen>
     HapticService.load();
     _initTutorial();
     _startUITimer();
-    // Fire-and-forget by design (the UI renders sensible defaults until
-    // they land), but failures must be visible in debug builds.
-    DailyGoalService.load().catchError((e) => logError('dailyGoal.load', e));
-    XpService.load().catchError((e) => logError('xp.load', e));
     BadgeService.load().catchError((e) => logError('badge.load', e));
     _initDuelMode();
   }
@@ -285,7 +283,8 @@ class _BoardScreenState extends State<BoardScreen>
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
             shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10)),
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
         );
         await Future.delayed(const Duration(seconds: 2));
@@ -323,8 +322,7 @@ class _BoardScreenState extends State<BoardScreen>
       _showDuelResult = false;
       _myRematchReady = false;
       _duelFinishedReported = false;
-      _xpAwardedThisGame = false;
-      _statsUpdatedThisGame = false;
+      _terminalEffects.reset();
       _myFinalElapsedSeconds = 0;
       _myFinalRoyals = 0;
       _opponentScore = 0;
@@ -354,7 +352,8 @@ class _BoardScreenState extends State<BoardScreen>
       elapsedSeconds: _myFinalElapsedSeconds,
       royalsPlaced: _myFinalRoyals,
     );
-    ok = ok ||
+    ok =
+        ok ||
         await DuelService.markFinished(
           duelId,
           score,
@@ -397,8 +396,7 @@ class _BoardScreenState extends State<BoardScreen>
   Future<void> _initTutorial() async {
     if (widget.existingGame != null && !widget.forceTutorial) return;
     await TutorialManager.syncFromFirestore();
-    final shouldRun =
-        await TutorialManager.init(force: widget.forceTutorial);
+    final shouldRun = await TutorialManager.init(force: widget.forceTutorial);
     if (!mounted) return;
     if (shouldRun) {
       if (widget.showNewGamePicker) {
@@ -426,8 +424,11 @@ class _BoardScreenState extends State<BoardScreen>
       setState(() => _activeHint = _HintType.none);
       return;
     }
-    setState(() => _activeHint =
-        current.isNumOrAce ? _HintType.numberCard : _HintType.royalCard);
+    setState(
+      () => _activeHint = current.isNumOrAce
+          ? _HintType.numberCard
+          : _HintType.royalCard,
+    );
   }
 
   /// Called when fill->clear transition happens while tutorial is active.
@@ -468,22 +469,24 @@ class _BoardScreenState extends State<BoardScreen>
   String get _hintMessage {
     final isHe = _lang == AppLang.he;
     return switch (_activeHint) {
-      _HintType.numberCard => _centerSlotsFull
+      _HintType.numberCard =>
+        _centerSlotsFull
           ? (isHe
               ? 'קלף מספר! המרכז מלא, מקם אותו בחוכמה במסגרת החיצונית.'
               : 'You drew a number! Now place it carefully on the outer frame.')
           : (isHe
               ? 'קלף מספר! כדאי למקם אותו ב-4 משבצות המרכז.'
               : 'You drew a number! Best to place it in the center 4 slots.'),
-      _HintType.royalCard => isHe
+      _HintType.royalCard =>
+        isHe
           ? 'קלף מלוכה! מקם אותו על המשבצת המתאימה במסגרת החיצונית.'
           : 'A Royal card! Place it on its matching slot in the outer frame.',
-      _HintType.clearStart => isHe
+      _HintType.clearStart =>
+        isHe
           ? 'הלוח מלא! בחר שני קלפים שסכומם 11 (למשל 6 ו-5, או 8 ו-3).'
           : 'Board is full! Select two cards that sum to 11 (e.g. 6 and 5, or 8 and 3).',
-      _HintType.clearFirstDone => isHe
-          ? 'מצוין! המשך לפנות זוגות.'
-          : 'Great! Keep clearing pairs.',
+      _HintType.clearFirstDone =>
+        isHe ? 'מצוין! המשך לפנות זוגות.' : 'Great! Keep clearing pairs.',
       _ => '',
     };
   }
@@ -523,6 +526,7 @@ class _BoardScreenState extends State<BoardScreen>
     final prefs = await SharedPreferences.getInstance();
     final newValue = !_optionalClearing;
     await prefs.setBool(_optionalClearingPrefKey, newValue);
+    if (!mounted) return;
     setState(() => _optionalClearing = newValue);
   }
 
@@ -533,9 +537,8 @@ class _BoardScreenState extends State<BoardScreen>
       if (game.phase == Phase.winner || game.phase == Phase.gameOver) return;
 
       // Extreme: count-down bomb. Fire game-over when time runs out.
-      if (game.isSuddenDeath && !_xpAwardedThisGame) {
-        final elapsed =
-            DateTime.now().difference(game.startTime).inSeconds;
+      if (game.isSuddenDeath && !_terminalEffects.handled) {
+        final elapsed = DateTime.now().difference(game.startTime).inSeconds;
         if (elapsed >= _extremeSeconds) {
           _triggerBombGameOver();
           return;
@@ -690,7 +693,11 @@ class _BoardScreenState extends State<BoardScreen>
   Future<void> _doUnlock() async {
     try {
       for (final p in [
-        _winPlayer, _lossPlayer, _popPlayer, _placePlayer, _phasePlayer,
+        _winPlayer,
+        _lossPlayer,
+        _popPlayer,
+        _placePlayer,
+        _phasePlayer,
       ]) {
         await p.setVolume(0);
         await p.resume();
@@ -709,9 +716,15 @@ class _BoardScreenState extends State<BoardScreen>
     _phasePulseCtrl.dispose();
     _confettiCtrl.dispose();
     for (final p in [
-      _winPlayer, _lossPlayer, _popPlayer, _placePlayer, _phasePlayer,
+      _winPlayer,
+      _lossPlayer,
+      _popPlayer,
+      _placePlayer,
+      _phasePlayer,
     ]) {
-      try { p.stop(); } catch (_) {}
+      try {
+        p.stop();
+      } catch (_) {}
       p.dispose();
     }
     _duelSub?.cancel();
@@ -734,7 +747,9 @@ class _BoardScreenState extends State<BoardScreen>
       _confettiCtrl.stop();
     } else if (state == AppLifecycleState.resumed) {
       if (_duelSession != null) {
-        _duelSub = DuelService.watchDuel(_duelSession!.duelId).listen((updated) {
+        _duelSub = DuelService.watchDuel(_duelSession!.duelId).listen((
+          updated,
+        ) {
           if (!mounted || updated == null) return;
           _onDuelUpdate(updated);
         });
@@ -749,7 +764,11 @@ class _BoardScreenState extends State<BoardScreen>
 
   Future<void> _stopAllAudio() async {
     for (final p in [
-      _winPlayer, _lossPlayer, _popPlayer, _placePlayer, _phasePlayer,
+      _winPlayer,
+      _lossPlayer,
+      _popPlayer,
+      _placePlayer,
+      _phasePlayer,
     ]) {
       try {
         await p.setVolume(0.0);
@@ -760,9 +779,15 @@ class _BoardScreenState extends State<BoardScreen>
 
   Future<void> _stopAllAudioNow() async {
     for (final p in [
-      _winPlayer, _lossPlayer, _popPlayer, _placePlayer, _phasePlayer,
+      _winPlayer,
+      _lossPlayer,
+      _popPlayer,
+      _placePlayer,
+      _phasePlayer,
     ]) {
-      try { await p.stop(); } catch (_) {}
+      try {
+        await p.stop();
+      } catch (_) {}
     }
   }
 
@@ -832,8 +857,7 @@ class _BoardScreenState extends State<BoardScreen>
     if (TutorialManager.isActive) {
       _hintAutoTimer?.cancel();
       setState(() => _activeHint = _HintType.none);
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => _evaluateFillHint());
+      WidgetsBinding.instance.addPostFrameCallback((_) => _evaluateFillHint());
     }
   }
 
@@ -868,8 +892,9 @@ class _BoardScreenState extends State<BoardScreen>
     _confettiCtrl.stop();
     _stopAllAudio();
 
-    SharedPreferences.getInstance()
-        .then((p) => p.setString(_difficultyPrefKey, diff.name));
+    SharedPreferences.getInstance().then(
+      (p) => p.setString(_difficultyPrefKey, diff.name),
+    );
 
     setState(() {
       _difficulty = diff;
@@ -883,8 +908,7 @@ class _BoardScreenState extends State<BoardScreen>
       _godMode = false;
       _isAnimatingClear = false;
       _errorHighlights.clear();
-      _xpAwardedThisGame = false;
-      _statsUpdatedThisGame = false;
+      _terminalEffects.reset();
       _clearedAtLeastOnePairThisPhase = false;
     });
     // Clear any lingering tutorial state when starting a new game.
@@ -911,83 +935,96 @@ class _BoardScreenState extends State<BoardScreen>
   // ── End-state ──────────────────────────────────────────────────────────────
 
   void _checkEndState() {
-    if (game.phase == Phase.winner) {
-      _inactivityTimer?.cancel();
-      _hintAutoTimer?.cancel();
-      _hintPulseCtrl.stop();
-      setState(() {
-        _hintedPair.clear();
-        _hintCurrentCard = false;
-        _activeHint = _HintType.none;
-      });
-      DailyGoalService.addProgress(GoalType.finishMatch, 1);
-      if (!_xpAwardedThisGame) {
-        _xpAwardedThisGame = true;
-        final xp = switch (_difficulty) {
-          GameDifficulty.easy    => 125,
-          GameDifficulty.medium  => 250,
-          GameDifficulty.classic => 500,
-          GameDifficulty.expert  => 1000,
-        };
-        XpService.addXP(xp);
-      }
-      // Duel: report final score as winner
-      if (_duelSession != null && !_duelFinishedReported) {
-        final duelId = _duelSession!.duelId;
-        final score = game.score;
-        _myFinalElapsedSeconds =
-            (game.endTime ?? DateTime.now()).difference(game.startTime).inSeconds;
-        _myFinalRoyals = game.royalsPlacedCorrect;
-        _reportDuelFinished(duelId, score);
-      }
-      setState(() => _showGameOverOverlay = false);
+    final isWinner = game.phase == Phase.winner;
+    final isGameOver = game.phase == Phase.gameOver;
+    if (!isWinner && !isGameOver) {
+      // Push live score to Firestore whenever game is still ongoing.
+      if (_duelSession != null) _syncDuelScore();
+      return;
+    }
+    if (!mounted || !_terminalEffects.claim(game)) return;
+
+    _inactivityTimer?.cancel();
+    _hintAutoTimer?.cancel();
+    _hintPulseCtrl.stop();
+    setState(() {
+      _hintedPair.clear();
+      _hintCurrentCard = false;
+      _activeHint = _HintType.none;
+      _showGameOverOverlay = false;
+    });
+
+    final xp = switch ((_difficulty, isWinner)) {
+      (GameDifficulty.easy, true) => 125,
+      (GameDifficulty.medium, true) => 250,
+      (GameDifficulty.classic, true) => 500,
+      (GameDifficulty.expert, true) => 1000,
+      (GameDifficulty.easy, false) => 12,
+      (GameDifficulty.medium, false) => 25,
+      (GameDifficulty.classic, false) => 50,
+      (GameDifficulty.expert, false) => 100,
+    };
+    unawaited(
+      _persistTerminalProgress(isWinner: isWinner, score: game.score, xp: xp),
+    );
+
+    if (_duelSession != null && !_duelFinishedReported) {
+      final duelId = _duelSession!.duelId;
+      final score = game.score;
+      _myFinalElapsedSeconds = (game.endTime ?? DateTime.now())
+          .difference(game.startTime)
+          .inSeconds;
+      _myFinalRoyals = game.royalsPlacedCorrect;
+      unawaited(_reportDuelFinished(duelId, score));
+    }
+
+    if (isWinner) {
       _confettiCtrl.play();
-      _playWin();
-    } else if (game.phase == Phase.gameOver) {
-      _inactivityTimer?.cancel();
-      _hintAutoTimer?.cancel();
-      _hintPulseCtrl.stop();
-      setState(() {
-        _hintedPair.clear();
-        _hintCurrentCard = false;
-        _activeHint = _HintType.none;
-      });
-      DailyGoalService.addProgress(GoalType.finishMatch, 1);
-      if (!_xpAwardedThisGame) {
-        _xpAwardedThisGame = true;
-        final xp = switch (_difficulty) {
-          GameDifficulty.easy    => 12,
-          GameDifficulty.medium  => 25,
-          GameDifficulty.classic => 50,
-          GameDifficulty.expert  => 100,
-        };
-        XpService.addXP(xp);
-      }
-      // Duel: report final score as loser
-      if (_duelSession != null && !_duelFinishedReported) {
-        final duelId = _duelSession!.duelId;
-        final score = game.score;
-        _myFinalElapsedSeconds =
-            (game.endTime ?? DateTime.now()).difference(game.startTime).inSeconds;
-        _myFinalRoyals = game.royalsPlacedCorrect;
-        _reportDuelFinished(duelId, score);
-      }
-      setState(() => _showGameOverOverlay = false);
+      unawaited(_playWin());
+    } else {
+      final terminalGame = game;
       Future.delayed(const Duration(milliseconds: 400), () {
         if (mounted &&
+            identical(game, terminalGame) &&
             game.phase == Phase.gameOver &&
             ModalRoute.of(context)?.isCurrent == true) {
           setState(() => _showGameOverOverlay = true);
-          _playLoss();
+          unawaited(_playLoss());
         }
       });
     }
-    // Push live score to Firestore whenever game is still ongoing.
-    if (_duelSession != null &&
-        game.phase != Phase.winner &&
-        game.phase != Phase.gameOver) {
-      _syncDuelScore();
+  }
+
+  Future<void> _persistTerminalProgress({
+    required bool isWinner,
+    required int score,
+    required int xp,
+  }) async {
+    try {
+      await DbService().updatePlayerStats(score, isWinner);
+    } catch (_) {
+      debugPrint('Terminal statistics update failed.');
     }
+    await _terminalProgress.apply(
+      applyDailyGoals: () async {
+        try {
+          await DailyGoalService.addProgress(GoalType.finishMatch, 1);
+          await DailyGoalService.addProgress(GoalType.scorePoints, score);
+        } catch (_) {
+          debugPrint('Terminal daily-goal update failed.');
+        }
+      },
+      applyXp: () async {
+        try {
+          await XpService.addXP(xp);
+        } catch (_) {
+          debugPrint('Terminal XP update failed.');
+        }
+      },
+      onLoadFailure: (service) {
+        debugPrint('Terminal $service load failed; progress was skipped.');
+      },
+    );
   }
 
   // ── Sudden-death helpers ──────────────────────────────────────────────────
@@ -1022,18 +1059,13 @@ class _BoardScreenState extends State<BoardScreen>
               ? 'לא ניתן להניח קלף על משבצת תפוסה!'
               : 'You cannot place a card on top of another card!',
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 13,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
         ),
         backgroundColor: kDanger,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(milliseconds: 1800),
         margin: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
@@ -1070,12 +1102,16 @@ class _BoardScreenState extends State<BoardScreen>
     HapticService.success();
 
     if (!_isMuted) {
-      _phasePlayer.setVolume(1.0).then((_) {
+      _phasePlayer
+          .setVolume(1.0)
+          .then((_) {
         return _phasePlayer.seek(Duration.zero);
-      }).then((_) {
+          })
+          .then((_) {
         if (!mounted) return;
         _phasePlayer.resume().catchError((_) {});
-      }).catchError((_) {});
+          })
+          .catchError((_) {});
     }
 
     if (!mounted) return;
@@ -1257,11 +1293,16 @@ class _BoardScreenState extends State<BoardScreen>
     final result = <int>{};
     for (int i = 0; i < 16; i++) {
       if (game.cells[i] != null) continue;
-      if (_godMode) { result.add(i); continue; }
+      if (_godMode) {
+        result.add(i);
+        continue;
+      }
       final type = game.layout[i];
       if (card.isNumOrAce) {
         result.add(i);
-      } else if (card.isK && type == SlotType.kingCorner && !game.isBlocked[i]) {
+      } else if (card.isK &&
+          type == SlotType.kingCorner &&
+          !game.isBlocked[i]) {
         result.add(i);
       } else if (card.isQ && type == SlotType.queenEdge  && !game.isBlocked[i]) {
         result.add(i);
@@ -1271,7 +1312,6 @@ class _BoardScreenState extends State<BoardScreen>
     }
     return result;
   }
-
 
   void _showDailyGoal() {
     final goal = DailyGoalService.current;
@@ -1330,8 +1370,7 @@ class _BoardScreenState extends State<BoardScreen>
               child: Text(
                 goal.isCompleted ? 'Completed! ✓' : goal.progressLabel,
                 style: TextStyle(
-                  color:
-                      goal.isCompleted ? Colors.greenAccent : kGoldLight,
+                  color: goal.isCompleted ? Colors.greenAccent : kGoldLight,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1.2,
                 ),
@@ -1342,8 +1381,7 @@ class _BoardScreenState extends State<BoardScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close',
-                style: TextStyle(color: kGoldDark)),
+            child: const Text('Close', style: TextStyle(color: kGoldDark)),
           ),
         ],
       ),
@@ -1384,7 +1422,13 @@ class _BoardScreenState extends State<BoardScreen>
           await SharePlus.instance.share(
             ShareParams(
               text: text,
-              files: [XFile.fromData(imageBytes, mimeType: 'image/png', name: 'royal_frame_result.png')],
+              files: [
+                XFile.fromData(
+                  imageBytes,
+                  mimeType: 'image/png',
+                  name: 'royal_frame_result.png',
+                ),
+              ],
             ),
           );
         } catch (_) {
@@ -1457,7 +1501,7 @@ class _BoardScreenState extends State<BoardScreen>
                   BoxShadow(
                     color: kRoyalGlowColor.withValues(alpha: 0.3),
                     blurRadius: 6,
-                  )
+                  ),
                 ]
               : null,
         ),
@@ -1472,7 +1516,9 @@ class _BoardScreenState extends State<BoardScreen>
                 child: Text(
                   c.label,
                   style: const TextStyle(
-                      color: Colors.black, fontWeight: FontWeight.bold),
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
@@ -1532,8 +1578,10 @@ class _BoardScreenState extends State<BoardScreen>
       decoration: BoxDecoration(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(10),
-        border:
-            Border.all(color: kGoldDark.withValues(alpha: 0.55), width: 1.6),
+        border: Border.all(
+          color: kGoldDark.withValues(alpha: 0.55),
+          width: 1.6,
+        ),
       ),
     );
   }
@@ -1562,10 +1610,7 @@ class _BoardScreenState extends State<BoardScreen>
       width: kDeckStackW,
       height: kDeckStackH,
       child: remaining <= 0
-          ? Align(
-              alignment: Alignment.bottomLeft,
-              child: _emptyDeckSlot(),
-            )
+          ? Align(alignment: Alignment.bottomLeft, child: _emptyDeckSlot())
           : Stack(
               clipBehavior: Clip.hardEdge,
               alignment: Alignment.bottomLeft,
@@ -1600,9 +1645,7 @@ class _BoardScreenState extends State<BoardScreen>
             child: Stack(
               clipBehavior: Clip.none,
               alignment: Alignment.center,
-              children: [
-                Align(alignment: baseAlign, child: base),
-              ],
+              children: [Align(alignment: baseAlign, child: base)],
             ),
           ),
         ],
@@ -1621,8 +1664,7 @@ class _BoardScreenState extends State<BoardScreen>
       base: _clearPileSlot(),
     );
 
-    var deckTagText =
-        '${_l.labelDeck}  ${game.cardsRemainingDisplay}';
+    var deckTagText = '${_l.labelDeck}  ${game.cardsRemainingDisplay}';
     if (peek != null) {
       deckTagText +=
           '\n${_l.peekNext('${peek.label}${suitSymbol(peek.suit)}')}';
@@ -1654,15 +1696,13 @@ class _BoardScreenState extends State<BoardScreen>
 
       thirdBase = Draggable<CardModel>(
         data: curr,
-        feedback:
-            Opacity(opacity: 0.9, child: _playingCard(curr, large: true)),
+        feedback: Opacity(opacity: 0.9, child: _playingCard(curr, large: true)),
         childWhenDragging: _playingCard(curr, dimmed: true),
         onDragStarted: () {
           if (!_showWelcomeModals) setState(() => _draggingCard = curr);
         },
         onDragEnd: (_) => setState(() => _draggingCard = null),
-        onDraggableCanceled: (_, __) =>
-            setState(() => _draggingCard = null),
+        onDraggableCanceled: (_, __) => setState(() => _draggingCard = null),
         child: currentCardChild,
       );
     } else if (deckNotEmpty) {
@@ -1706,10 +1746,8 @@ class _BoardScreenState extends State<BoardScreen>
     const int    cols = 4;
     const int    rows = 4;
 
-    final double cellW =
-        (gridW - pad * 2 - gap * (cols - 1)) / cols;
-    final double cellH =
-        (gridH - pad * 2 - gap * (rows - 1)) / rows;
+    final double cellW = (gridW - pad * 2 - gap * (cols - 1)) / cols;
+    final double cellH = (gridH - pad * 2 - gap * (rows - 1)) / rows;
     final double ratio = cellW / cellH;
 
     return KeyedSubtree(
@@ -1725,7 +1763,7 @@ class _BoardScreenState extends State<BoardScreen>
               color: Colors.black.withValues(alpha: 0.45),
               blurRadius: 16,
               offset: const Offset(0, 4),
-            )
+            ),
           ],
         ),
         padding: const EdgeInsets.all(pad),
@@ -1744,7 +1782,8 @@ class _BoardScreenState extends State<BoardScreen>
             final isFrame   = type != SlotType.innerDump;
             final isDragTarget = dragHighlights.contains(i);
 
-            final bool correctRoyal = card != null &&
+            final bool correctRoyal =
+                card != null &&
                 !blocked &&
                 ((card.isK && type == SlotType.kingCorner) ||
                     (card.isQ && type == SlotType.queenEdge) ||
@@ -1825,7 +1864,10 @@ class _BoardScreenState extends State<BoardScreen>
                 borderWidth = 3.5;
               }
 
-              if (selected && (game.phase == Phase.clear || (game.phase == Phase.fill && game.difficulty == GameDifficulty.easy))) {
+              if (selected &&
+                  (game.phase == Phase.clear ||
+                      (game.phase == Phase.fill &&
+                          game.difficulty == GameDifficulty.easy))) {
                 borderColor = kSelectionHighlight;
                 borderWidth = 3.5;
               }
@@ -1875,8 +1917,7 @@ class _BoardScreenState extends State<BoardScreen>
             }
 
             final bool isNumberCard = card != null && card.isNumOrAce;
-            final bool shouldDim = game.phase == Phase.clear &&
-                !isNumberCard;
+            final bool shouldDim = game.phase == Phase.clear && !isNumberCard;
 
             final cellWidget = KeyedSubtree(
               key: _cellKeys[i],
@@ -1894,7 +1935,9 @@ class _BoardScreenState extends State<BoardScreen>
                       gradient: gradient,
                       borderRadius: BorderRadius.circular(7),
                       border: Border.all(
-                          color: borderColor, width: borderWidth),
+                        color: borderColor,
+                        width: borderWidth,
+                      ),
                       boxShadow: shadows,
                     ),
                     child: cellContent,
@@ -1924,12 +1967,13 @@ class _BoardScreenState extends State<BoardScreen>
                   HapticService.light();
                   final phaseWillChange = previousPhase != game.phase;
                   if (!phaseWillChange) _playPlace();
-                  _maybeTriggerPhaseTransitionFeedback(previousPhase, game.phase);
+                  _maybeTriggerPhaseTransitionFeedback(
+                    previousPhase,
+                    game.phase,
+                  );
                   final placedCard = game.cells[i];
                   if (placedCard != null &&
-                      (placedCard.isK ||
-                          placedCard.isQ ||
-                          placedCard.isJ)) {
+                      (placedCard.isK || placedCard.isQ || placedCard.isJ)) {
                     DailyGoalService.addProgress(GoalType.placeRoyal, 1);
                   }
                   if (placedCard != null && placedCard.isQ) {
@@ -1993,8 +2037,9 @@ class _BoardScreenState extends State<BoardScreen>
         .inSeconds;
 
     final bool isExtreme = game.difficulty == GameDifficulty.expert;
-    final int displaySecs =
-        isExtreme ? max(0, _extremeSeconds - elapsedSecs) : elapsedSecs;
+    final int displaySecs = isExtreme
+        ? max(0, _extremeSeconds - elapsedSecs)
+        : elapsedSecs;
     final bool isCountdown = isExtreme;
     final bool timerCritical = isExtreme && displaySecs <= 30;
 
@@ -2009,8 +2054,9 @@ class _BoardScreenState extends State<BoardScreen>
         navigator.pop(game);
       },
       child: Directionality(
-        textDirection:
-            _lang == AppLang.he ? TextDirection.rtl : TextDirection.ltr,
+        textDirection: _lang == AppLang.he
+            ? TextDirection.rtl
+            : TextDirection.ltr,
         child: Screenshot(
           controller: _screenshotCtrl,
           child: Scaffold(
@@ -2054,7 +2100,9 @@ class _BoardScreenState extends State<BoardScreen>
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 5, vertical: 1),
+                          horizontal: 5,
+                          vertical: 1,
+                        ),
                       decoration: BoxDecoration(
                         color: _difficultyColor.withValues(alpha: 0.18),
                         borderRadius: BorderRadius.circular(4),
@@ -2081,26 +2129,30 @@ class _BoardScreenState extends State<BoardScreen>
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 4, vertical: 4),
+                        horizontal: 4,
+                        vertical: 4,
+                      ),
                     decoration: BoxDecoration(
                       color: Colors.black45,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                          color: kGoldDark.withValues(alpha: 0.5)),
+                          color: kGoldDark.withValues(alpha: 0.5),
+                        ),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.emoji_events,
-                            size: 18, color: kGold),
+                          const Icon(
+                            Icons.emoji_events,
+                            size: 18,
+                            color: kGold,
+                          ),
                         const SizedBox(width: 4),
                         AnimatedSwitcher(
                           duration: kDurFast,
-                          transitionBuilder: (child, anim) =>
-                              FadeTransition(
+                            transitionBuilder: (child, anim) => FadeTransition(
                             opacity: anim,
-                            child: ScaleTransition(
-                                scale: anim, child: child),
+                              child: ScaleTransition(scale: anim, child: child),
                           ),
                           child: Text(
                             '${game.score}',
@@ -2114,9 +2166,7 @@ class _BoardScreenState extends State<BoardScreen>
                         ),
                         const SizedBox(width: 10),
                         Icon(
-                          isCountdown
-                              ? Icons.timer_outlined
-                              : Icons.timer,
+                            isCountdown ? Icons.timer_outlined : Icons.timer,
                           size: 18,
                           color: timerCritical
                               ? Colors.redAccent
@@ -2149,7 +2199,11 @@ class _BoardScreenState extends State<BoardScreen>
                   child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildCompactIcon(Icons.home, kGold, tooltip: _l.tooltipHome, () {
+                          _buildCompactIcon(
+                            Icons.home,
+                            kGold,
+                            tooltip: _l.tooltipHome,
+                            () {
                       if (game.phase == Phase.winner ||
                           game.phase == Phase.gameOver) {
                         Navigator.pop(context, game);
@@ -2170,32 +2224,49 @@ class _BoardScreenState extends State<BoardScreen>
                               _lang == AppLang.he
                                   ? 'אם תעזוב, תפסיד את הדו-קרב והיריב יוכרז כמנצח.'
                                   : 'If you leave, you forfeit the duel and your opponent wins.',
-                              style: const TextStyle(color: Colors.white),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                      ),
                             ),
                             actions: [
                               TextButton(
-                                onPressed: () => Navigator.pop(dialogContext),
+                                        onPressed: () =>
+                                            Navigator.pop(dialogContext),
                                 child: Text(
-                                  _lang == AppLang.he ? 'ביטול' : 'Cancel',
-                                  style: const TextStyle(color: kGoldDark),
+                                          _lang == AppLang.he
+                                              ? 'ביטול'
+                                              : 'Cancel',
+                                          style: const TextStyle(
+                                            color: kGoldDark,
+                                          ),
                                 ),
                               ),
                               FilledButton(
                                 style: FilledButton.styleFrom(
                                     backgroundColor: kDanger,
-                                    foregroundColor: Colors.white),
+                                          foregroundColor: Colors.white,
+                                        ),
                                 onPressed: () {
                                   Navigator.pop(dialogContext);
-                                  final name = FirebaseAuth
-                                          .instance.currentUser?.displayName ??
-                                      (_lang == AppLang.he ? 'יריב' : 'Opponent');
+                                          final name =
+                                              FirebaseAuth
+                                                  .instance
+                                                  .currentUser
+                                                  ?.displayName ??
+                                              (_lang == AppLang.he
+                                                  ? 'יריב'
+                                                  : 'Opponent');
                                   DuelService.markAbandoned(
-                                      _duelSession!.duelId, name);
+                                            _duelSession!.duelId,
+                                            name,
+                                          );
                                   _duelSub?.cancel();
                                   Navigator.pop(context, game);
                                 },
                                 child: Text(
-                                  _lang == AppLang.he ? 'עזוב' : 'Leave',
+                                          _lang == AppLang.he
+                                              ? 'עזוב'
+                                              : 'Leave',
                                 ),
                               ),
                             ],
@@ -2210,13 +2281,11 @@ class _BoardScreenState extends State<BoardScreen>
                           backgroundColor: kBurgundyLight,
                           title: Text(
                             _l.dialogHomeTitle,
-                            style:
-                                const TextStyle(color: kGold),
+                                    style: const TextStyle(color: kGold),
                           ),
                           content: Text(
                             _l.dialogHomeBody,
-                            style: const TextStyle(
-                                color: Colors.white),
+                                    style: const TextStyle(color: Colors.white),
                           ),
                           actions: [
                             TextButton(
@@ -2225,7 +2294,8 @@ class _BoardScreenState extends State<BoardScreen>
                               child: Text(
                                 _l.btnNo,
                                 style: const TextStyle(
-                                    color: kGoldDark),
+                                          color: kGoldDark,
+                                        ),
                               ),
                             ),
                             FilledButton(
@@ -2238,7 +2308,8 @@ class _BoardScreenState extends State<BoardScreen>
                           ],
                         ),
                       );
-                    }),
+                            },
+                          ),
                     const SizedBox(width: 2),
                     _buildCompactIcon(
                       Icons.undo,
@@ -2248,13 +2319,21 @@ class _BoardScreenState extends State<BoardScreen>
                     ),
                     const SizedBox(width: 2),
                     _buildCompactIcon(
-                        Icons.refresh, kGold, _openDifficultyPicker,
-                        tooltip: _l.tooltipNewGame),
+                            Icons.refresh,
+                            kGold,
+                            _openDifficultyPicker,
+                            tooltip: _l.tooltipNewGame,
+                          ),
                     const SizedBox(width: 2),
 
                     DailyGoalService.current?.isCompleted == true
                         ? _buildDailyGoalCompletedBadge()
-                        : _buildCompactIcon(Icons.flag, kGold, _showDailyGoal, tooltip: _l.tooltipDailyGoal),
+                              : _buildCompactIcon(
+                                  Icons.flag,
+                                  kGold,
+                                  _showDailyGoal,
+                                  tooltip: _l.tooltipDailyGoal,
+                                ),
                     const SizedBox(width: 2),
 
                     SizedBox(
@@ -2270,7 +2349,8 @@ class _BoardScreenState extends State<BoardScreen>
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                           side: BorderSide(
-                              color: kGoldDark.withValues(alpha: 0.5)),
+                                  color: kGoldDark.withValues(alpha: 0.5),
+                                ),
                         ),
                         onSelected: (value) {
                           if (value == 'rules') {
@@ -2284,16 +2364,22 @@ class _BoardScreenState extends State<BoardScreen>
                                     _hintCurrentCard = false;
                                     _hintedPair.clear();
                                     TutorialManager.isActive = true;
-                                    TutorialManager.phase = TutorialPhase.modals;
-                                    setState(() => _showWelcomeModals = true);
+                                        TutorialManager.phase =
+                                            TutorialPhase.modals;
+                                        setState(
+                                          () => _showWelcomeModals = true,
+                                        );
                                   },
-                                ));
+                                    ),
+                                  );
                           } else if (value == 'difficulty') {
                             _showDifficultyPicker();
                           } else if (value == 'cosmetics') {
                             _showThemeGallery();
                           } else if (value == 'lang') {
-                            final newLang = _lang == AppLang.he ? AppLang.en : AppLang.he;
+                                  final newLang = _lang == AppLang.he
+                                      ? AppLang.en
+                                      : AppLang.he;
                             setState(() => _lang = newLang);
                             L.saveLang(newLang);
                           } else if (value == 'mute') {
@@ -2307,88 +2393,149 @@ class _BoardScreenState extends State<BoardScreen>
                         itemBuilder: (context) => [
                           PopupMenuItem(
                             value: 'rules',
-                            child: Row(children: [
-                              const Icon(Icons.menu_book_rounded,
-                                  color: kGold, size: 20),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.menu_book_rounded,
+                                        color: kGold,
+                                        size: 20,
+                                      ),
                               const SizedBox(width: 12),
-                              Text(_l.tooltipRules,
+                                      Text(
+                                        _l.tooltipRules,
                                   style: const TextStyle(
-                                      color: kGoldLight, fontSize: 14)),
-                            ]),
+                                          color: kGoldLight,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                           ),
                           PopupMenuItem(
                             value: 'difficulty',
-                            child: Row(children: [
-                              const Icon(Icons.speed,
-                                  color: kGold, size: 20),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.speed,
+                                        color: kGold,
+                                        size: 20,
+                                      ),
                               const SizedBox(width: 12),
                               Text(
-                                (_lang == AppLang.he ? 'רמה: ' : 'Difficulty: ') + _difficultyLabel,
+                                        (_lang == AppLang.he
+                                                ? 'רמה: '
+                                                : 'Difficulty: ') +
+                                            _difficultyLabel,
                                 style: const TextStyle(
-                                    color: kGoldLight, fontSize: 14),
+                                          color: kGoldLight,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
                               ),
-                            ]),
                           ),
                           PopupMenuItem(
                             value: 'cosmetics',
-                            child: Row(children: [
-                              const Icon(Icons.style, color: kGold, size: 20),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.style,
+                                        color: kGold,
+                                        size: 20,
+                                      ),
                               const SizedBox(width: 12),
                               Text(
-                                _lang == AppLang.he ? 'ערכות נושא' : 'Themes',
-                                style: const TextStyle(color: kGoldLight, fontSize: 14),
+                                        _lang == AppLang.he
+                                            ? 'ערכות נושא'
+                                            : 'Themes',
+                                        style: const TextStyle(
+                                          color: kGoldLight,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
                               ),
-                            ]),
                           ),
                           PopupMenuItem(
                             value: 'lang',
-                            child: Row(children: [
-                              const Icon(Icons.language,
-                                  color: kGold, size: 20),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.language,
+                                        color: kGold,
+                                        size: 20,
+                                      ),
                               const SizedBox(width: 12),
-                              Text(_l.langToggleLabel,
+                                      Text(
+                                        _l.langToggleLabel,
                                   style: const TextStyle(
-                                      color: kGoldLight, fontSize: 14)),
-                            ]),
+                                          color: kGoldLight,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                           ),
                           PopupMenuItem(
                             value: 'mute',
-                            child: Row(children: [
+                                  child: Row(
+                                    children: [
                               Icon(
                                   _isMuted
                                       ? Icons.volume_off
                                       : Icons.volume_up,
                                   color: kGold,
-                                  size: 20),
+                                        size: 20,
+                                      ),
                               const SizedBox(width: 12),
-                              Text(_isMuted
-                                  ? (_lang == AppLang.he ? 'בטל השתקה' : 'Unmute')
-                                  : (_lang == AppLang.he ? 'השתק' : 'Mute'),
+                                      Text(
+                                        _isMuted
+                                            ? (_lang == AppLang.he
+                                                  ? 'בטל השתקה'
+                                                  : 'Unmute')
+                                            : (_lang == AppLang.he
+                                                  ? 'השתק'
+                                                  : 'Mute'),
                                   style: const TextStyle(
-                                      color: kGoldLight, fontSize: 14)),
-                            ]),
+                                          color: kGoldLight,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                           ),
                           PopupMenuItem(
                             value: 'haptic',
-                            child: Row(children: [
+                                  child: Row(
+                                    children: [
                               Icon(
                                   HapticService.isEnabled
                                       ? Icons.vibration
                                       : Icons.phonelink_erase,
                                   color: kGold,
-                                  size: 20),
+                                        size: 20,
+                                      ),
                               const SizedBox(width: 12),
                               Text(
                                   HapticService.isEnabled
-                                      ? (_lang == AppLang.he ? 'רטט: פועל' : 'Vibration: On')
-                                      : (_lang == AppLang.he ? 'רטט: כבוי' : 'Vibration: Off'),
+                                            ? (_lang == AppLang.he
+                                                  ? 'רטט: פועל'
+                                                  : 'Vibration: On')
+                                            : (_lang == AppLang.he
+                                                  ? 'רטט: כבוי'
+                                                  : 'Vibration: Off'),
                                   style: const TextStyle(
-                                      color: kGoldLight, fontSize: 14)),
-                            ]),
+                                          color: kGoldLight,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                           ),
                           PopupMenuItem(
                             value: 'optional_clearing',
-                            child: Row(children: [
+                                  child: Row(
+                                    children: [
                               Icon(
                                 _optionalClearing
                                     ? Icons.skip_next
@@ -2406,9 +2553,12 @@ class _BoardScreenState extends State<BoardScreen>
                                         ? 'פינוי חופשי: כבוי'
                                         : 'Free Clearing: Off'),
                                 style: const TextStyle(
-                                    color: kGoldLight, fontSize: 14),
+                                          color: kGoldLight,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
                               ),
-                            ]),
                           ),
                         ],
                       ),
@@ -2433,13 +2583,17 @@ class _BoardScreenState extends State<BoardScreen>
                         Container(
                           color: kGoldDark.withValues(alpha: 0.25),
                           padding: const EdgeInsets.symmetric(
-                              vertical: 4, horizontal: 12),
+                              vertical: 4,
+                              horizontal: 12,
+                            ),
                           child: Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(Icons.open_with_rounded,
-                                  size: 14, color: kGoldLight),
+                                const Icon(
+                                  Icons.open_with_rounded,
+                                  size: 14,
+                                  color: kGoldLight,
+                                ),
                               const SizedBox(width: 6),
                               Text(
                                 _moveFromIndex == null
@@ -2464,10 +2618,11 @@ class _BoardScreenState extends State<BoardScreen>
                         Container(
                           color: kBurgundy.withValues(alpha: 0.85),
                           padding: const EdgeInsets.symmetric(
-                              vertical: 4, horizontal: 12),
+                              vertical: 4,
+                              horizontal: 12,
+                            ),
                           child: Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
                                 _lang == AppLang.he
@@ -2487,7 +2642,9 @@ class _BoardScreenState extends State<BoardScreen>
                                   if (ok) {
                                     setState(() {});
                                     _maybeTriggerPhaseTransitionFeedback(
-                                        Phase.clear, game.phase);
+                                        Phase.clear,
+                                        game.phase,
+                                      );
                                     _checkEndState();
                                     _restartHintTimer();
                                   } else {
@@ -2495,16 +2652,17 @@ class _BoardScreenState extends State<BoardScreen>
                                   }
                                 },
                                 child: Container(
-                                  padding:
-                                      const EdgeInsets.symmetric(
+                                    padding: const EdgeInsets.symmetric(
                                           horizontal: 10,
-                                          vertical: 3),
+                                      vertical: 3,
+                                    ),
                                   decoration: BoxDecoration(
                                     color: kGoldDark.withValues(alpha: 0.3),
-                                    borderRadius:
-                                        BorderRadius.circular(6),
+                                      borderRadius: BorderRadius.circular(6),
                                     border: Border.all(
-                                        color: kGoldDark, width: 1),
+                                        color: kGoldDark,
+                                        width: 1,
+                                      ),
                                   ),
                                   child: Text(
                                     _lang == AppLang.he ? 'דלג' : 'Skip',
@@ -2520,37 +2678,35 @@ class _BoardScreenState extends State<BoardScreen>
                           ),
                         ),
 
-
                       Expanded(
                         child: Padding(
                           padding: const EdgeInsets.only(
                               left: 8,
                               right: 8,
                               top: 4,
-                              bottom: 28),
+                              bottom: 28,
+                            ),
                           child: LayoutBuilder(
                             builder: (context, constraints) {
-                              final double totalH =
-                                  constraints.maxHeight;
-                              final double totalW =
-                                  constraints.maxWidth;
+                                final double totalH = constraints.maxHeight;
+                                final double totalW = constraints.maxWidth;
 
                               final double gridH =
                                   totalH - deckRowH - innerGap;
-                              final double gridW =
-                                  totalW.clamp(0.0, gridH * 1.4);
+                                final double gridW = totalW.clamp(
+                                  0.0,
+                                  gridH * 1.4,
+                                );
 
                               return Column(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.center,
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   // Deck-row dimming during the clear phase
                                   // was intentionally disabled; render at
                                   // full opacity.
                                   SizedBox(
                                     height: deckRowH,
-                                    child: Center(
-                                        child: _deckRow()),
+                                      child: Center(child: _deckRow()),
                                   ),
                                   SizedBox(height: innerGap),
                                   Center(
@@ -2569,11 +2725,9 @@ class _BoardScreenState extends State<BoardScreen>
                     ],
                   ),
 
-                  if (game.phase == Phase.winner)
-                    _winnerOverlayHost(),
+                    if (game.phase == Phase.winner) _winnerOverlayHost(),
 
-                  if (game.phase == Phase.gameOver &&
-                      _showGameOverOverlay)
+                    if (game.phase == Phase.gameOver && _showGameOverOverlay)
                     _gameOverOverlayHost(),
 
                   // Duel HUD — live opponent score + result banner
@@ -2583,7 +2737,8 @@ class _BoardScreenState extends State<BoardScreen>
                     _duelHudHost(),
 
                   // Duel comparison screen — shown when both players finish
-                  if (_duelSession != null && _showDuelResult &&
+                    if (_duelSession != null &&
+                        _showDuelResult &&
                       _duelSession!.abandonedBy == null)
                     Positioned.fill(
                       child: OverlayEntrance(
@@ -2658,9 +2813,8 @@ class _BoardScreenState extends State<BoardScreen>
                           final double scale;
                           if (t < 0.16) {
                             final tn = (t / 0.16).clamp(0.0, 1.0);
-                            scale = 0.62 +
-                                0.38 *
-                                    Curves.elasticOut.transform(tn);
+                              scale =
+                                  0.62 + 0.38 * Curves.elasticOut.transform(tn);
                           } else {
                             scale = 1.0;
                           }
@@ -2675,12 +2829,12 @@ class _BoardScreenState extends State<BoardScreen>
                           );
                         },
                         child: Container(
-                          constraints:
-                              const BoxConstraints(maxWidth: 320),
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 28),
+                            constraints: const BoxConstraints(maxWidth: 320),
+                            margin: const EdgeInsets.symmetric(horizontal: 28),
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 28, vertical: 20),
+                              horizontal: 28,
+                              vertical: 20,
+                            ),
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
@@ -2693,7 +2847,8 @@ class _BoardScreenState extends State<BoardScreen>
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                                 color: kGold.withValues(alpha: 0.75),
-                                width: 1.8),
+                                width: 1.8,
+                              ),
                             boxShadow: [
                               BoxShadow(
                                 color: kGold.withValues(alpha: 0.35),
@@ -2714,10 +2869,7 @@ class _BoardScreenState extends State<BoardScreen>
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: 3.5,
                                   shadows: [
-                                    Shadow(
-                                      color: kGold,
-                                      blurRadius: 22,
-                                    ),
+                                      Shadow(color: kGold, blurRadius: 22),
                                     Shadow(
                                       color: Colors.black,
                                       blurRadius: 10,
@@ -2736,8 +2888,7 @@ class _BoardScreenState extends State<BoardScreen>
                                 _phaseSubLabel,
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color:
-                                      Colors.white.withValues(alpha: 0.90),
+                                    color: Colors.white.withValues(alpha: 0.90),
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
                                   letterSpacing: 0.4,
@@ -2759,8 +2910,7 @@ class _BoardScreenState extends State<BoardScreen>
                     alignment: Alignment.topCenter,
                     child: ConfettiWidget(
                       confettiController: _confettiCtrl,
-                      blastDirectionality:
-                          BlastDirectionality.explosive,
+                        blastDirectionality: BlastDirectionality.explosive,
                       numberOfParticles: 40,
                       gravity: 0.25,
                       emissionFrequency: 0.05,
@@ -2796,14 +2946,16 @@ class _BoardScreenState extends State<BoardScreen>
   }
 
   Widget _buildCompactIcon(
-      IconData icon, Color color, VoidCallback? onTap,
-      {String? tooltip}) {
+    IconData icon,
+    Color color,
+    VoidCallback? onTap, {
+    String? tooltip,
+  }) {
     final Widget button = InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Padding(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
         child: Icon(icon, size: 26, color: color),
       ),
     );
@@ -2848,31 +3000,17 @@ class _BoardScreenState extends State<BoardScreen>
     );
   }
 
-
-  /// Hosts [WinnerOverlay]. Keeps the one-shot stats side effect with the
-  /// screen state and computes the score breakdown at end-state time; the
-  /// overlay itself is pure visual.
-  // TODO(defect-report): this write fires during build (guarded by
-  // _statsUpdatedThisGame). Pre-existing behavior, intentionally preserved.
+  /// Hosts the visual winner overlay and computes its score breakdown.
   Widget _winnerOverlayHost() {
-    if (!_statsUpdatedThisGame) {
-      _statsUpdatedThisGame = true;
-      DbService().updatePlayerStats(game.score, true);
-      DailyGoalService.addProgress(GoalType.scorePoints, game.score);
-    }
-
     final int baseScore = game.score;
     const int winBonus = 1000;
-    final int drawnWhenFilled =
-        game.cardsDrawnWhenFrameFilled ?? 52;
-    final int effBonus =
-        max(0, (52 - drawnWhenFilled) * 50);
+    final int drawnWhenFilled = game.cardsDrawnWhenFrameFilled ?? 52;
+    final int effBonus = max(0, (52 - drawnWhenFilled) * 50);
     final int seconds = (game.endTime ?? DateTime.now())
         .difference(game.startTime)
         .inSeconds;
     final int speedBonus = max(0, 5000 - (seconds * 5));
-    final int rawTotal =
-        baseScore + winBonus + effBonus + speedBonus;
+    final int rawTotal = baseScore + winBonus + effBonus + speedBonus;
 
     final double multiplier = switch (_difficulty) {
       GameDifficulty.easy    => 0.25,
@@ -2905,20 +3043,12 @@ class _BoardScreenState extends State<BoardScreen>
       onChangeDifficulty: _openDifficultyPicker,
       onShare: () => _shareVictory(totalScore),
       onMainMenu: () => Navigator.of(context).pop(),
-    ));
+      ),
+    );
   }
 
-  /// Hosts [GameOverOverlay]. Keeps the one-shot stats side effect with the
-  /// screen state; the overlay itself is pure visual.
-  // TODO(defect-report): this write fires during build (guarded by
-  // _statsUpdatedThisGame). Pre-existing behavior, intentionally preserved —
-  // see the sprint's final defect report before changing.
+  /// Hosts the visual game-over overlay.
   Widget _gameOverOverlayHost() {
-    if (!_statsUpdatedThisGame) {
-      _statsUpdatedThisGame = true;
-      DbService().updatePlayerStats(game.score, false);
-      DailyGoalService.addProgress(GoalType.scorePoints, game.score);
-    }
     return OverlayEntrance(
         child: GameOverOverlay(
       game: game,
@@ -2933,6 +3063,7 @@ class _BoardScreenState extends State<BoardScreen>
       onChangeDifficulty: _openDifficultyPicker,
       onShare: _shareGameOver,
       onMainMenu: () => Navigator.of(context).pop(),
-    ));
+      ),
+    );
   }
 }

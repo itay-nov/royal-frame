@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/player_model.dart';
+import '../utils/player_name_policy.dart';
 import 'auth_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,7 +42,7 @@ class DbService {
             docRef,
             PlayerModel(
               uid: user.uid,
-              displayName: user.displayName ?? 'Player',
+              displayName: PlayerNamePolicy.sanitize(user.displayName),
               highScore: newScore,
               totalScore: newScore,
               wins: isWin ? 1 : 0,
@@ -59,7 +61,8 @@ class DbService {
           });
         }
       });
-    } catch (e) {
+    } catch (_) {
+      debugPrint('[DbService] Player statistics update failed.');
     }
   }
 
@@ -68,13 +71,12 @@ class DbService {
   /// the write is silently skipped — the name will be persisted by
   /// updatePlayerStats when they complete their first game.
   Future<void> updateDisplayName(String uid, String displayName) async {
-    final sanitized = displayName.trim();
-    if (sanitized.isEmpty || sanitized.length > 30) return;
+    if (!PlayerNamePolicy.isValid(displayName)) return;
+    final sanitized = PlayerNamePolicy.normalize(displayName);
     try {
-      await _db
-          .collection('players')
-          .doc(uid)
-          .update({'displayName': sanitized});
+      await _db.collection('players').doc(uid).update({
+        'displayName': sanitized,
+      });
     } catch (_) {
       // Document doesn't exist yet — no-op is intentional.
     }
@@ -83,12 +85,16 @@ class DbService {
   /// Creates players/{uid} with default stats if it doesn't exist yet.
   /// Merge-safe: never overwrites an existing document's stats.
   Future<void> ensurePlayerDoc(String uid, String displayName) async {
+    final safeName = PlayerNamePolicy.sanitize(displayName);
     final doc = await _db.collection('players').doc(uid).get();
     if (doc.exists) return;
-    await _db.collection('players').doc(uid).set(
+    await _db
+        .collection('players')
+        .doc(uid)
+        .set(
           PlayerModel(
             uid: uid,
-            displayName: displayName,
+            displayName: safeName,
             lastUpdated: DateTime.now(),
           ).toMap(),
           SetOptions(merge: true),
@@ -193,11 +199,12 @@ class DbService {
     final user = _auth.currentUser;
     if (user == null) return;
     try {
-      await _db.collection('players').doc(user.uid).set(
-        {'streak': streak, 'streakLastDate': lastDate},
-        SetOptions(merge: true),
-      );
-    } catch (e) {
+      await _db.collection('players').doc(user.uid).set({
+        'streak': streak,
+        'streakLastDate': lastDate,
+      }, SetOptions(merge: true));
+    } catch (_) {
+      debugPrint('[DbService] Streak save failed.');
     }
   }
 
@@ -213,7 +220,8 @@ class DbService {
         'streak': data['streak'],
         'streakLastDate': data['streakLastDate'] ?? '',
       };
-    } catch (e) {
+    } catch (_) {
+      debugPrint('[DbService] Streak load failed.');
       return null;
     }
   }
