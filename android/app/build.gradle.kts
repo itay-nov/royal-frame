@@ -21,7 +21,7 @@ plugins {
 
 android {
     namespace = "com.itay.royalframegame"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
    
     signingConfigs {
