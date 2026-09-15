@@ -1,5 +1,5 @@
 name: royal_frame
-description: "A new Flutter project."
+description: "A cross-platform strategic card game with Firebase-backed progression, leaderboards, and real-time duels."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
