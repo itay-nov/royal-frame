@@ -47,20 +47,17 @@ service cloud.firestore {
 
     function validDuelParticipantUpdate() {
       let changed = request.resource.data.diff(resource.data).affectedKeys();
-      let common = [
-        'status', 'winnerId', 'rematchReady', 'seed', 'abandonedBy'
-      ];
-      let hostFields = [
-        'hostScore', 'hostFinished', 'hostTime', 'hostRoyals'
-      ];
-      let guestFields = [
-        'guestScore', 'guestFinished', 'guestTime', 'guestRoyals'
-      ];
 
       return (resource.data.hostUid == request.auth.uid
-              && changed.hasOnly(common.concat(hostFields)))
+              && changed.hasOnly([
+                'status', 'winnerId', 'rematchReady', 'seed', 'abandonedBy',
+                'hostScore', 'hostFinished', 'hostTime', 'hostRoyals'
+              ]))
           || (resource.data.guestUid == request.auth.uid
-              && changed.hasOnly(common.concat(guestFields)));
+              && changed.hasOnly([
+                'status', 'winnerId', 'rematchReady', 'seed', 'abandonedBy',
+                'guestScore', 'guestFinished', 'guestTime', 'guestRoyals'
+              ]));
     }
 
     function validDisplayName(name) {
